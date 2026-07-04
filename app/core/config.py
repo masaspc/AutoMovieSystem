@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "fake"
     YOUTUBE_PROVIDER: str = "fake"
 
+    # Anthropic LLMプロバイダー設定。APIキー未設定でもFakeで全機能デモ可能(D-006)。
+    ANTHROPIC_API_KEY: str = ""
+    # model_policy ("low"|"mid"|"high") -> 実際のモデルID。
+    LLM_MODEL_LOW: str = "claude-haiku-4-5-20251001"
+    LLM_MODEL_MID: str = "claude-sonnet-5"
+    LLM_MODEL_HIGH: str = "claude-opus-4-8"
+
     # AI予算(整数マイクロUSD, ADR-0007)。1 USD = 1_000_000 マイクロUSD。
     DAILY_AI_BUDGET_MICRO_USD: int = 5_000_000
     MONTHLY_AI_BUDGET_MICRO_USD: int = 100_000_000

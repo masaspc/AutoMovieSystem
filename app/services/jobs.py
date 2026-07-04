@@ -12,7 +12,7 @@ Celeryタスク・APIハンドラの双方から同期SQLAlchemyセッション�
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -119,6 +119,94 @@ def run_idempotent[T](
         job_run.status = "failed"
         job_run.finished_at = datetime.utcnow()
         # シークレットを含めないよう、例外メッセージのみを切り詰めて保存する。
+        job_run.last_error = str(exc)[:_MAX_ERROR_LENGTH]
+        session.flush()
+        logger.error(
+            "job_run_failed",
+            job_type=job_type,
+            idempotency_key=idempotency_key,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+    job_run.status = "succeeded"
+    job_run.finished_at = datetime.utcnow()
+    session.flush()
+    logger.info("job_run_succeeded", job_type=job_type, idempotency_key=idempotency_key)
+    return JobResult(status="succeeded", job_run=job_run, result=result)
+
+
+async def run_idempotent_async[T](
+    session: Session,
+    *,
+    job_type: str,
+    entity_type: str,
+    entity_id: str,
+    idempotency_key: str,
+    fn: Callable[[JobRun], Awaitable[T]],
+    trace_id: str | None = None,
+) -> JobResult[T]:
+    """`run_idempotent` の非同期版。
+
+    LLM/TTSなど async Protocol (D-013) を呼び出すサービス層向け。`fn` は現在の
+    `JobRun` を受け取る(UsageRecord記録などで `job_run_id` を使うため)。
+    冪等性の判定・JobRun管理ロジックは同期版と同一。
+    """
+    existing = session.query(JobRun).filter(JobRun.idempotency_key == idempotency_key).one_or_none()
+
+    if existing is not None and existing.status == "succeeded":
+        logger.info(
+            "job_run_skipped_already_succeeded",
+            job_type=job_type,
+            idempotency_key=idempotency_key,
+        )
+        return JobResult(status="skipped", job_run=existing)
+
+    job_run: JobRun
+    if existing is not None:
+        job_run = existing
+        job_run.attempt += 1
+        job_run.status = "started"
+        job_run.started_at = datetime.utcnow()
+        job_run.finished_at = None
+        job_run.last_error = None
+        job_run.trace_id = trace_id
+        session.flush()
+    else:
+        job_run = JobRun(
+            job_type=job_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            idempotency_key=idempotency_key,
+            status="started",
+            attempt=1,
+            trace_id=trace_id,
+        )
+        try:
+            with session.begin_nested():
+                session.add(job_run)
+                session.flush()
+        except IntegrityError:
+            session.expunge(job_run)
+            winner = (
+                session.query(JobRun)
+                .filter(JobRun.idempotency_key == idempotency_key)
+                .one_or_none()
+            )
+            logger.info(
+                "job_run_skipped_concurrent_insert",
+                job_type=job_type,
+                idempotency_key=idempotency_key,
+            )
+            if winner is None:  # pragma: no cover - 理論上到達しない防御的分岐
+                raise
+            return JobResult(status="skipped", job_run=winner)
+
+    try:
+        result = await fn(job_run)
+    except Exception as exc:
+        job_run.status = "failed"
+        job_run.finished_at = datetime.utcnow()
         job_run.last_error = str(exc)[:_MAX_ERROR_LENGTH]
         session.flush()
         logger.error(
