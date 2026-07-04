@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Auto Movie System{% endblock %}</title>
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <h1>Auto Movie System</h1>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

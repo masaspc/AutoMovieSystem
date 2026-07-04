@@ -6,8 +6,8 @@
 
 - [x] Phase -1: 環境セットアップ(Python 3.12.13 via uv / FFmpeg 8.1.2 via winget / Docker Desktop インストール済・初回起動未)
 - [x] Phase 0: 足場 + Claude Code設定 + architectレビュー(ADR-0004〜0007承認、D-009〜D-012)
-- [ ] Phase 1: 基盤(FastAPI/DB/Alembic/Celery/Docker/CI)(進行中)
-- [ ] Phase 2: 企画・台本・コスト管理
+- [x] Phase 1: 基盤(FastAPI/DB/Alembic/Celery/Docker/CI)— unit 12件パス、ruff/mypyクリーン。Docker実起動とCI上のPG統合テストは未検証(未解決事項参照)
+- [ ] Phase 2: 企画・台本・コスト管理(進行中)
 - [ ] Phase 3: 動画生成
 - [ ] Phase 4: 自動レビュー + 承認
 - [ ] Phase 5: YouTube投稿

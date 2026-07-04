@@ -1,0 +1,49 @@
+"""FastAPIアプリファクトリ。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.api.router import router as api_router
+from app.core.logging import configure_logging, get_logger
+from app.db.session import get_db
+from app.web.router import router as web_router
+
+APP_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = APP_DIR / "templates"
+STATIC_DIR = APP_DIR / "static"
+
+logger = get_logger(__name__)
+
+
+def create_app() -> FastAPI:
+    configure_logging()
+
+    app = FastAPI(title="Auto Movie System")
+
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    app.state.templates = templates
+
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    app.include_router(web_router)
+    app.include_router(api_router)
+
+    @app.get("/health")
+    def health(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok"}
+
+    logger.info("app_created")
+    return app
+
+
+app = create_app()
