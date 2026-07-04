@@ -49,7 +49,13 @@ TOPIC_CREATED → TOPIC_SCORED → RESEARCH_READY → SCRIPT_GENERATED
 
 失敗状態: RESEARCH_FAILED / SCRIPT_FAILED / ASSET_FAILED / RENDER_FAILED /
 REVIEW_FAILED / UPLOAD_FAILED / METRICS_FAILED
-(各失敗状態は対応する直前の正常状態からのみ遷移可。再実行は失敗状態→処理中の正常系へ戻す)
+
+追加状態・エッジ(ADR-0006):
+- REJECTED: AUTOMATED_REVIEW_PASSED からの人間却下先(終端)
+- 各失敗状態は対応する処理の直前状態からのみ遷移可。復旧エッジは
+  「失敗状態 → その処理の入力となった直前の正常状態」を遷移表に明示する(再実行=巻き戻し)
+- UPLOADED_PRIVATE は正当な準終端(AUTO_PUBLISH_ENABLED=false かつ予約なしなら PUBLISHED へ進まない)
+- metrics/comments の定期同期は status ではなく「published_at 非NULL の Publication」述語で駆動する
 
 実装: `app/services/state_machine.py` に遷移表(dict)を持ち、`transition(project, to_state)` のみが
 status を変更できる。遷移表外は `InvalidTransitionError`。
@@ -60,8 +66,10 @@ status を変更できる。遷移表外は `InvalidTransitionError`。
 - `JobRun(idempotency_key)` 一意制約。実行開始時に JobRun を INSERT し、既に成功済みなら即スキップ
 - 成果物(音声・動画)は生成前に既存ファイル+チェックサム照合、あれば再生成しない
 - アップロードは2段階: (1) `Publication` を `upload_status=STARTED` でINSERT(`idempotency_key`一意制約)
-  → (2) 実行 → (3) `youtube_video_id` 記録+`COMPLETED`。再試行時は STARTED レコードの
-  youtube_video_id 有無を確認してから再開する(Fake/実装とも動画チェックサム照会で二重を検出)
+  → (2) 実行 → (3) `youtube_video_id` 記録+`COMPLETED`。アップロード時に動画説明末尾へ
+  idempotency マーカーを埋め込み、STARTED かつ youtube_video_id 不明の再試行では自チャンネルの
+  最近のアップロード一覧とマーカーを突合(reconcile)してから再開する。突合が不確実な場合は
+  再アップロードせず UPLOAD_FAILED として保留する(fail-closed)。詳細は ADR-0005
 - UsageRecord はジョブの JobRun 成功と同一トランザクションで記録し、二重計上を防ぐ
 
 ## 公開ゲート(fail-closed)
@@ -105,6 +113,12 @@ Approval, Publication, VideoMetricDaily, Comment, Insight, JobRun, UsageRecord�
 - `Publication.youtube_video_id` UNIQUE(NULL許容)
 - `Comment.youtube_comment_id` UNIQUE / `VideoMetricDaily(publication_id, metric_date)` UNIQUE
 - `Script(topic_id, version)` UNIQUE / `Review(video_project_id, reviewer_type, review_version)` UNIQUE
+- `Topic(channel_id, source_type, source_ref)` UNIQUE(source_ref は取り込み元の自然キー。
+  手動入力はクライアント生成キー、CSVは行ハッシュ、コメント派生は youtube_comment_id)— ADR-0004
+- `VideoProject(topic_id, generation)` UNIQUE(MVPは generation=1 固定運用)— ADR-0004
+- `UsageRecord(job_run_id, seq)` UNIQUE(job_run_id 非NULL時)— ADR-0004
+- 金額はすべて 整数マイクロUSD(`*_micro_usd`)で保存。float禁止 — ADR-0007
+- 予算は BudgetLedger 行への条件付きUPDATE(reserve→commit/release)でアトミックに消費 — ADR-0007
 - Topic.total_score は設定可能な重み(§8)で services/topics/scoring.py が計算
 
 ## テスト戦略

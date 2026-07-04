@@ -45,3 +45,31 @@ winget(Gyan.FFmpeg)で導入。PATH 反映遅延に備え、設定の `FFMPEG_PA
 
 パス検証はこのディレクトリ配下であることを必須にし、ディレクトリトラバーサルを拒否。
 git 管理外。`make clean-generated` で削除可能。
+
+## D-009: ADR-0004〜0007 を承認(2026-07-04, architectレビュー起点)
+
+architect(opus)の設計レビュー指摘(BLOCKER 2件)を受け、ADR-0004(エンティティ生成の
+冪等キー)、0005(アップロードreconcile・fail-closed)、0006(状態機械の復旧エッジ/
+REJECTED/準終端)、0007(整数マイクロUSD+予算アトミック予約)をすべて承認。
+
+## D-010: VideoProject は (topic_id, generation) 世代管理(2026-07-04)
+
+1 Topic = 1 Project 固定にせず、`(topic_id, generation)` UNIQUE を最初から導入。
+MVPでは generation=1 のみ使用。作り直し要件が出ても スキーマ変更不要。
+
+## D-011: 予算予約はMVPスコープに含める(2026-07-04)
+
+check-then-act 競合は eager 単一ワーカーでは顕在化しないが、BudgetLedger への
+条件付きUPDATE(SQLite/PG両対応)で実装コストが低いため、MVPで reserve→commit/release を実装。
+
+## D-012: reconcile はFakeで完全実装、実YouTubeは同一コードパス(2026-07-04)
+
+ADR-0005 の reconcile(idempotencyマーカー突合)は Fake YouTube に list API を持たせて
+E2Eで検証する。実プロバイダーも同じインターフェースを実装(実アカウント検証はMVP外)。
+
+## D-013: DB は同期 SQLAlchemy、プロバイダーは async(2026-07-04)
+
+Celery タスク(同期)と FastAPI の両方から同じ repository/service を使うため、DB アクセスは
+同期 SQLAlchemy 2.0(psycopg 3 / sqlite3)。LLM/TTS/YouTube プロバイダーは仕様§9どおり
+async Protocol とし、Celery タスク内では asyncio.run() で呼ぶ。FastAPI の DB 依存
+エンドポイントは def(スレッドプール実行)にする。
