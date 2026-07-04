@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     DAILY_AI_BUDGET_MICRO_USD: int = 5_000_000
     MONTHLY_AI_BUDGET_MICRO_USD: int = 100_000_000
 
+    # Topic スコアリングの重み(仕様§8)。合計は1.0でなければならない
+    # (app/services/topics/scoring.py の validate_weights で検証)。
+    TOPIC_SCORE_WEIGHT_DEMAND: float = 0.25
+    TOPIC_SCORE_WEIGHT_EXPERTISE: float = 0.20
+    TOPIC_SCORE_WEIGHT_ORIGINALITY: float = 0.20
+    TOPIC_SCORE_WEIGHT_REVENUE: float = 0.15
+    TOPIC_SCORE_WEIGHT_FRESHNESS: float = 0.10
+    TOPIC_SCORE_WEIGHT_PRODUCTION_COST: float = 0.10
+
     @property
     def resolved_ffmpeg_path(self) -> str:
         return _resolve_binary_path(self.FFMPEG_PATH, "ffmpeg")

@@ -1,0 +1,6 @@
+title,description,source_url
+Python 3.13 の新機能まとめ,JITコンパイラやフリースレッド化など主要な変更点を10分で解説する。,https://example.com/articles/python-3-13-highlights
+Rust入門: 所有権システムを図解する,借用チェッカーでつまずきやすいポイントを図解しながら初心者向けに解説する。,https://example.com/articles/rust-ownership-explained
+自宅Kubernetesクラスタの作り方,ミニPC3台でHA構成のK8sクラスタを構築する手順を実演する。,https://example.com/articles/home-k8s-cluster
+LLM推論を高速化する量子化手法比較,GPTQ/AWQ/GGUFなど代表的な量子化手法の精度とレイテンシを比較する。,https://example.com/articles/llm-quantization-comparison
+Gitの内部構造を理解する,ブロブ・ツリー・コミットオブジェクトの関係をコマンドで実際に確認しながら解説する。,https://example.com/articles/git-internals
