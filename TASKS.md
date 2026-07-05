@@ -23,7 +23,7 @@
       コメント/指標由来Insight生成、コメント由来Topic候補生成、
       API(同期・一覧取得) + Celeryタスク(単体/一括同期)。unit/API 9件追加、計240件パス。
       alembic upgrade head・ruff・mypy クリーン
-- [ ] Phase 7: 管理画面 + 運用
+- [x] Phase 7: 管理画面 + 運用ドキュメント — 7A: 管理画面 12ページ構築(dashboard/topics/video-projects/reviews/approvals/publications/comments/insights/jobs/usage/settings/health)、CSRF保護・監査ログ。7B: demo・E2Eテスト・全フロー完走検証。ドキュメント整備: README.md / docs/setup.md / docs/operations.md / docs/security.md / docs/content-policy.md / docs/cost-control.md/.env.example / TASKS.md更新。unit/API 240件+e2e全フロー検証パス。
 - [ ] Phase 8: 総合検証
 
 ## 未解決事項
