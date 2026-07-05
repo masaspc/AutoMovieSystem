@@ -41,6 +41,16 @@ def _mask_value(value: Any) -> Any:
     return value
 
 
+def mask_secrets_in_text(text: str) -> str:
+    """プレーンな文字列中の既知シークレットパターンをマスクする。
+
+    `last_error` 等、structlog経由ではなくDBへ直接保存する文字列に対して使う
+    (シークレットをログ・DBへ残さないためのセキュリティ要点対応)。
+    """
+    masked = _mask_value(text)
+    return masked if isinstance(masked, str) else text
+
+
 def mask_secrets_processor(_logger: Any, _method_name: str, event_dict: EventDict) -> EventDict:
     """イベント辞書内のシークレットらしき値をマスクするstructlogプロセッサ。"""
     for key, value in list(event_dict.items()):

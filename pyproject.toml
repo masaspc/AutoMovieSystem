@@ -20,6 +20,9 @@ dependencies = [
   "cryptography>=43.0",
   "itsdangerous>=2.2",
   "pillow>=11.0",
+  "google-api-python-client>=2.150",
+  "google-auth>=2.35",
+  "google-auth-oauthlib>=1.2",
 ]
 
 [dependency-groups]

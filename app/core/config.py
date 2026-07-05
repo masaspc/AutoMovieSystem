@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "fake"
     YOUTUBE_PROVIDER: str = "fake"
 
+    # 実YouTubeプロバイダー用のOAuthクライアント情報(installed app flow:
+    # scripts/youtube_oauth_setup.py)。未設定でもFakeで全機能デモ可能(D-006)。
+    # リフレッシュトークンはOAuthTokenへ暗号化保存。
+    YOUTUBE_OAUTH_CLIENT_ID: str = ""
+    YOUTUBE_OAUTH_CLIENT_SECRET: str = ""
+    # 動画アップロードのresumable upload チャンクサイズ(バイト。256KiBの倍数)。
+    YOUTUBE_UPLOAD_CHUNK_SIZE_BYTES: int = 4 * 1024 * 1024
+
     # TTS_PROVIDER=generic_command 時のコマンドテンプレート(引数配列。JSON文字列で指定)。
     # 例: '["voicevox_cli", "--text", "{text}", "--voice", "{voice}", "--out", "{output}"]'
     TTS_GENERIC_COMMAND_TEMPLATE: str = ""

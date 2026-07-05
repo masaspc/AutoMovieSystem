@@ -73,3 +73,25 @@ Celery タスク(同期)と FastAPI の両方から同じ repository/service を
 同期 SQLAlchemy 2.0(psycopg 3 / sqlite3)。LLM/TTS/YouTube プロバイダーは仕様§9どおり
 async Protocol とし、Celery タスク内では asyncio.run() で呼ぶ。FastAPI の DB 依存
 エンドポイントは def(スレッドプール実行)にする。
+
+## D-014: アップロード冪等性は Publication(idempotency_key)+JobRun の二重管理(2026-07-05)
+
+`app/services/publishing/uploader.py` の `upload_video` は、他サービス同様
+`run_idempotent_async`(JobRun)でラップしつつ、内部で `Publication.idempotency_key`
+(`upload:{video_project_id}:{checksum}`)の get-or-create を行う。JobRun が既に
+succeeded ならバリデーション自体を再実行せずスキップする(2回目呼び出しで
+VideoProject の状態が UPLOADED_PRIVATE に進んでいても前提検証エラーにならないため)。
+ADR-0005 の reconcile(description内 `amx-idem:{idempotency_key}` マーカー突合)は
+`youtube_video_id` が未記録の場合に常に実行する(started/failed問わず、実行直前に
+必ず1回 list する。ADR-0005 Consequences の想定どおり quota を1回消費する)。
+
+## D-015: 公開ゲート6条件は gate.py(4条件)+ scheduler.py(2条件)に分割(2026-07-05)
+
+`docs/architecture.md` の公開ゲート6条件のうち、既存 `app/services/reviews/gate.py`
+の `can_auto_publish`(同期API、Phase 4で実装済み・テスト済み)は
+自動レビュー合格/人間承認/チェックサム一致/高リスクキーワードの4条件を担当する。
+残る「重複 youtube_video_id なし」「有効なOAuth認証」の2条件は、YouTubeProvider
+(async)と Publication モデル(Phase 5で新設)に依存するため、gate.py の既存契約・
+シグネチャ(同期・provider引数なし)を変更せず `app/services/publishing/scheduler.py`
+の `_check_full_publish_gate` で追加検証する。gate.py を6条件対応の非同期APIへ
+統合するかは将来の要検討事項(TASKS.md 未解決事項参照)。

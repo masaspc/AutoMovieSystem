@@ -10,8 +10,13 @@
 - [x] Phase 2: 企画・台本・コスト管理 — 2A: モデル群+スコアリング+インポート+冪等性基盤 / 2B: LLM抽象化(Fake/Anthropic)+LLMキャッシュ+予算reserve→commit/release+台本生成+検査。unit+contract 73件パス
 - [x] Phase 3: 動画生成 — 状態機械(ADR-0006全エッジ)/VideoProject/Asset/TTS(Fake+GenericCommand)/字幕SRT+VTT/FFmpegレンダリング/ffprobe検査/冪等パイプライン。実ffmpegで1920x1080 H.264+AAC 7.2秒MP4生成・再実行スキップ確認。unit+contract 139件+media 2件パス
 - [x] Phase 4: 自動レビュー + 承認 — 機械検査(silencedetect/volumedetect含む)/コンテンツ検査(ルール+LLM)/公開可否ゲート(fail-closed)/承認・却下(CSRF+監査ログ)。unit 179件+media 5件パス
-- [ ] Phase 5: YouTube投稿(進行中)
-- [ ] Phase 5: YouTube投稿
+- [x] Phase 5: YouTube投稿 — Publication/OAuthToken モデル+マイグレーション、Fernet暗号化(app/core/crypto.py)、
+      YouTubeProvider Protocol(Fake/Real)、resumable upload(google-api-python-client)、
+      アップロード2段階記録+reconcile(ADR-0005: description内 `amx-idem:{key}` マーカー突合)、
+      公開予約サービス(6条件ゲート: can_auto_publish 4条件+重複youtube_video_idなし+有効なOAuth認証)、
+      Celeryタスク+API(POST /api/video-projects/{id}/upload, /api/publications/{id}/schedule)、
+      OAuthセットアップスクリプト+手順書(docs/youtube-oauth.md)。unit/contract 46件追加、計225件パス。
+      alembic upgrade/downgrade往復・ruff・mypy クリーン
 - [ ] Phase 6: 分析・コメント・フィードバック
 - [ ] Phase 7: 管理画面 + 運用
 - [ ] Phase 8: 総合検証
@@ -24,7 +29,14 @@
 - Review.score 採点式(blocking-25/warning-5)は暫定。運用要件確定後に見直し
 - CSRF鍵は SECRET_ENCRYPTION_KEY 未設定時に開発用フォールバック。本番はfail-fast必須化を Phase 8 セキュリティレビューで確認
 - ffmpeg/docker は PATH 未反映。設定のパス解決(D-007)で吸収する
-- ADR-0005 の reconcile 実装は Phase 5(Fake で E2E 検証)
+- ADR-0005 の reconcile 実装は Phase 5 で完了(FakeYouTubeProvider + RealYouTubeProvider 共通契約。
+  contract テストで型・戻り値を検証。実アカウントでの reconcile 実地検証はMVP外)
+- 公開ゲートの「重複youtube_video_idなし」「有効なOAuth認証」の2条件は
+  `app/services/reviews/gate.py`(既存4条件, 同期API)を変更せず、
+  `app/services/publishing/scheduler.py` 側で追加検証する設計とした(gate.py の既存契約・
+  テストを壊さないため)。将来 gate.py を6条件対応の非同期APIへ統合するかは要検討
+- RealYouTubeProvider は呼び出しごとに DB から最新の OAuthToken を読み込みリフレッシュする
+  (キャッシュしない)。トークンローテーション頻度が高い場合は性能要件を見て見直す
 
 ## 完了条件
 

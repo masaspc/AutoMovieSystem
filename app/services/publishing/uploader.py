@@ -1,0 +1,308 @@
+"""YouTubeアップロードサービス(仕様§12・ADR-0005)。
+
+`HUMAN_APPROVED` を経た `UPLOAD_READY` の VideoProject をYouTubeへ(デフォルト private)
+アップロードする。2段階記録+reconcile方式(ADR-0005)で二重投稿を防ぐ:
+
+1. 前提検証(状態=UPLOAD_READY、レビュー合格、Approval存在、出力ファイルchecksum一致)
+2. `idempotency_key = upload:{video_project_id}:{checksum}` で `Publication` を
+   get-or-create(`upload_status=started`)。既に`completed`+`youtube_video_id`ありなら
+   即返却(`run_idempotent_async` の JobRun 已succeeded スキップ経由)。
+3. `youtube_video_id` が未記録なら、実行直前に `provider.list_recent_uploads()` で
+   description内の idempotency マーカー(`amx-idem:{idempotency_key}`)を突合する
+   (reconcile-before-upload)。見つかれば再アップロードせずそのvideo_idを記録する。
+   見つからなければ実際にアップロードする。
+4. 成功: `youtube_video_id` 記録+`completed`、状態 `UPLOAD_READY`->`UPLOADED_PRIVATE`。
+5. 失敗: `upload_status=failed`+`last_error`(シークレット除去)、状態->`UPLOAD_FAILED`。
+   `QuotaExceededError` はリトライせずそのまま失敗として伝播する。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.core.logging import get_logger, mask_secrets_in_text
+from app.models.approval import Approval
+from app.models.job_run import JobRun
+from app.models.publication import Publication
+from app.models.review import Review
+from app.models.script import Script
+from app.models.video_project import VideoProject
+from app.providers.youtube.base import UploadRequest, YouTubeProvider
+from app.services.jobs import run_idempotent_async
+from app.services.media.renderer import compute_file_checksum
+from app.services.state_machine import transition
+
+logger = get_logger(__name__)
+
+_MAX_LAST_ERROR_LENGTH = 2000
+_RECONCILE_MAX_RESULTS = 50
+
+
+class VideoProjectNotFoundError(ValueError):
+    """指定されたVideoProjectが存在しない場合。"""
+
+
+class ScriptNotFoundError(ValueError):
+    """VideoProjectに紐づくScriptが存在しない、または未設定の場合。"""
+
+
+class UploadPreconditionError(ValueError):
+    """アップロード前提条件(状態・レビュー合格・承認・チェックサム)を満たさない場合。fail-closed。"""
+
+
+def build_upload_idempotency_key(video_project_id: str, checksum: str) -> str:
+    return f"upload:{video_project_id}:{checksum}"
+
+
+def build_idempotency_marker(idempotency_key: str) -> str:
+    """description末尾に埋め込む不可視マーカー(ADR-0005)。"""
+    return f"amx-idem:{idempotency_key}"
+
+
+def _get_video_project(session: Session, video_project_id: str) -> VideoProject:
+    project = session.get(VideoProject, video_project_id)
+    if project is None:
+        raise VideoProjectNotFoundError(f"VideoProject not found: {video_project_id}")
+    return project
+
+
+def _get_script(session: Session, project: VideoProject) -> Script:
+    if project.script_id is None:
+        raise ScriptNotFoundError(f"VideoProject({project.id})にScriptが紐づいていません")
+    script = session.get(Script, project.script_id)
+    if script is None:
+        raise ScriptNotFoundError(f"Script not found: {project.script_id}")
+    return script
+
+
+def _latest_review(session: Session, video_project_id: str, reviewer_type: str) -> Review | None:
+    return (
+        session.query(Review)
+        .filter(Review.video_project_id == video_project_id, Review.reviewer_type == reviewer_type)
+        .order_by(Review.review_version.desc())
+        .first()
+    )
+
+
+def _validate_upload_preconditions(session: Session, project: VideoProject) -> None:
+    """前提検証(fail-closed)。1つでも欠ければ `UploadPreconditionError` を送出する。"""
+    reasons: list[str] = []
+
+    if project.status != "UPLOAD_READY":
+        reasons.append(f"video project status is not UPLOAD_READY (actual={project.status})")
+
+    machine_review = _latest_review(session, project.id, "machine")
+    content_review = _latest_review(session, project.id, "content")
+    if machine_review is None or not machine_review.passed:
+        reasons.append("machine review not passed or missing")
+    if content_review is None or not content_review.passed:
+        reasons.append("content review not passed or missing")
+
+    approved = (
+        session.query(Approval)
+        .filter(Approval.video_project_id == project.id, Approval.decision == "approved")
+        .first()
+    )
+    if approved is None:
+        reasons.append("human approval required but missing")
+
+    if not project.checksum or not project.output_path:
+        reasons.append("checksum or output path missing (render not completed)")
+    else:
+        output_path = Path(project.output_path)
+        if not output_path.exists():
+            reasons.append("output file missing")
+        elif compute_file_checksum(output_path) != project.checksum:
+            reasons.append("checksum mismatch")
+
+    if reasons:
+        raise UploadPreconditionError("; ".join(reasons))
+
+
+def _get_or_create_publication(
+    session: Session,
+    project: VideoProject,
+    idempotency_key: str,
+    *,
+    title: str,
+    description: str,
+    tags: list[str],
+    privacy_status: str,
+) -> Publication:
+    existing = (
+        session.query(Publication)
+        .filter(Publication.idempotency_key == idempotency_key)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing
+
+    publication = Publication(
+        video_project_id=project.id,
+        title=title,
+        description=description,
+        tags=tags,
+        privacy_status=privacy_status,
+        idempotency_key=idempotency_key,
+        upload_status="started",
+    )
+    try:
+        with session.begin_nested():
+            session.add(publication)
+            session.flush()
+    except IntegrityError:
+        session.expunge(publication)
+        winner = (
+            session.query(Publication)
+            .filter(Publication.idempotency_key == idempotency_key)
+            .one_or_none()
+        )
+        if winner is None:  # pragma: no cover - 理論上到達しない防御的分岐
+            raise
+        return winner
+    return publication
+
+
+async def _reconcile_existing_upload(
+    provider: YouTubeProvider, marker: str, *, max_results: int = _RECONCILE_MAX_RESULTS
+) -> str | None:
+    """直近アップロード一覧からidempotencyマーカーを突合する(ADR-0005 reconcile-before-upload)。"""
+    uploads = await provider.list_recent_uploads(max_results=max_results)
+    for video in uploads:
+        if marker in video.description:
+            return video.youtube_video_id
+    return None
+
+
+async def _upload_or_reconcile(
+    session: Session,
+    project: VideoProject,
+    publication: Publication,
+    provider: YouTubeProvider,
+    idempotency_key: str,
+    *,
+    made_for_kids: bool,
+    contains_synthetic_media: bool,
+) -> Publication:
+    marker = build_idempotency_marker(idempotency_key)
+
+    if not publication.youtube_video_id:
+        reconciled_id = await _reconcile_existing_upload(provider, marker)
+        if reconciled_id is not None:
+            logger.info(
+                "upload_reconciled_existing_video",
+                video_project_id=project.id,
+                publication_id=publication.id,
+            )
+            publication.youtube_video_id = reconciled_id
+            publication.upload_status = "completed"
+            publication.last_error = None
+            transition(project, "UPLOADED_PRIVATE")
+            session.flush()
+            return publication
+
+    assert project.output_path is not None
+    request = UploadRequest(
+        file_path=project.output_path,
+        title=publication.title,
+        description=publication.description,
+        tags=list(publication.tags),
+        privacy_status=publication.privacy_status,
+        idempotency_marker=marker,
+        made_for_kids=made_for_kids,
+        contains_synthetic_media=contains_synthetic_media,
+    )
+    result = await provider.upload_video(request=request)
+
+    publication.youtube_video_id = result.youtube_video_id
+    publication.upload_status = "completed"
+    publication.last_error = None
+    transition(project, "UPLOADED_PRIVATE")
+    session.flush()
+    return publication
+
+
+async def upload_video(
+    session: Session,
+    *,
+    video_project_id: str,
+    provider: YouTubeProvider,
+    made_for_kids: bool = False,
+    # このシステムはLLM台本+TTS音声合成による生成コンテンツのため、既定でAI開示を行う。
+    contains_synthetic_media: bool = True,
+) -> Publication:
+    """VideoProjectをYouTubeへアップロードする(冪等。ADR-0005 reconcile対応)。"""
+    project = _get_video_project(session, video_project_id)
+    script = _get_script(session, project)
+
+    if not project.checksum or not project.output_path:
+        raise UploadPreconditionError("checksum or output path missing (render not completed)")
+
+    idempotency_key = build_upload_idempotency_key(video_project_id, project.checksum)
+
+    body = script.body or {}
+    title = script.title
+    description = str(body.get("description") or "")
+    tags = list(body.get("tags") or [])
+    privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
+
+    async def _do_upload(_job_run: JobRun) -> Publication:
+        _validate_upload_preconditions(session, project)
+
+        publication = _get_or_create_publication(
+            session,
+            project,
+            idempotency_key,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy_status=privacy_status,
+        )
+
+        if publication.upload_status == "completed" and publication.youtube_video_id:
+            return publication
+
+        try:
+            return await _upload_or_reconcile(
+                session,
+                project,
+                publication,
+                provider,
+                idempotency_key,
+                made_for_kids=made_for_kids,
+                contains_synthetic_media=contains_synthetic_media,
+            )
+        except Exception as exc:
+            publication.upload_status = "failed"
+            publication.last_error = mask_secrets_in_text(str(exc))[:_MAX_LAST_ERROR_LENGTH]
+            transition(project, "UPLOAD_FAILED")
+            session.flush()
+            raise
+
+    job_result = await run_idempotent_async(
+        session,
+        job_type="upload_video",
+        entity_type="video_project",
+        entity_id=video_project_id,
+        idempotency_key=idempotency_key,
+        fn=_do_upload,
+    )
+    if job_result.status == "skipped":
+        existing = (
+            session.query(Publication).filter(Publication.idempotency_key == idempotency_key).one()
+        )
+        return existing
+    assert job_result.result is not None
+    return job_result.result
+
+
+def restart_upload(session: Session, *, video_project_id: str) -> VideoProject:
+    """再試行: `UPLOAD_FAILED` -> `UPLOAD_READY`(復旧エッジ)。"""
+    project = _get_video_project(session, video_project_id)
+    transition(project, "UPLOAD_READY")
+    session.flush()
+    return project

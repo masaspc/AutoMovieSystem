@@ -5,6 +5,8 @@ from app.models.channel import Channel
 from app.models.evidence import Evidence
 from app.models.job_run import JobRun
 from app.models.llm_cache import LLMCache
+from app.models.oauth_token import OAuthToken
+from app.models.publication import Publication
 from app.models.review import Review
 from app.models.script import Script
 from app.models.topic import Topic
@@ -19,6 +21,8 @@ __all__ = [
     "Evidence",
     "JobRun",
     "LLMCache",
+    "OAuthToken",
+    "Publication",
     "Review",
     "Script",
     "Topic",
