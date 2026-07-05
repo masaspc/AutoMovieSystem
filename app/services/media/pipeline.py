@@ -485,3 +485,11 @@ def render_video(
         return project
     assert job_result.result is not None
     return job_result.result
+
+
+def restart_render(session: Session, *, video_project_id: str) -> VideoProject:
+    """再試行: `RENDER_FAILED` -> `ASSETS_READY`(復旧エッジ)。"""
+    project = _get_video_project(session, video_project_id)
+    transition(project, "ASSETS_READY")
+    session.flush()
+    return project

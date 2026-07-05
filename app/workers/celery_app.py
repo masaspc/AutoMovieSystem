@@ -29,3 +29,12 @@ celery_app.conf.update(
     enable_utc=True,
     worker_prefetch_multiplier=1,
 )
+
+# 定期ジョブ(仕様§14)。`CELERY_TASK_ALWAYS_EAGER=true`(デフォルト)の環境では
+# beatスケジューラを別途起動しない限り実行されず、既存の同期実行フローに影響しない。
+celery_app.conf.beat_schedule = {
+    "sync-completed-feedback-hourly": {
+        "task": "analytics.sync_completed_feedback",
+        "schedule": 3600.0,
+    },
+}

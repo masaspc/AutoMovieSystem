@@ -34,7 +34,7 @@ switch ($Target) {
         Invoke-Checked @("uv", "run", "alembic", "upgrade", "head")
     }
     "seed" {
-        Write-Host "TODO: seed data script not implemented yet"
+        Invoke-Checked @("uv", "run", "python", "scripts/seed.py")
     }
     "lint" {
         Invoke-Checked @("uv", "run", "ruff", "check", ".")
@@ -55,7 +55,7 @@ switch ($Target) {
         Invoke-Checked @("uv", "run", "pytest", "tests/e2e", "-q", "-m", "e2e")
     }
     "demo" {
-        Write-Host "TODO: demo workflow script not implemented yet"
+        Invoke-Checked @("uv", "run", "python", "scripts/demo.py")
     }
     "security-check" {
         Invoke-Checked @("uv", "run", "pip", "check")

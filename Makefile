@@ -13,7 +13,7 @@ migrate:
 	uv run alembic upgrade head
 
 seed:
-	@echo "TODO: seed data script not implemented yet"
+	uv run python scripts/seed.py
 
 lint:
 	uv run ruff check .
@@ -34,7 +34,7 @@ test-e2e:
 	uv run pytest tests/e2e -q -m e2e
 
 demo:
-	@echo "TODO: demo workflow script not implemented yet"
+	uv run python scripts/demo.py
 
 security-check:
 	uv run pip check
