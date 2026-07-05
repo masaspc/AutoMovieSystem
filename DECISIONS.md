@@ -95,3 +95,24 @@ ADR-0005 の reconcile(description内 `amx-idem:{idempotency_key}` マーカー�
 シグネチャ(同期・provider引数なし)を変更せず `app/services/publishing/scheduler.py`
 の `_check_full_publish_gate` で追加検証する。gate.py を6条件対応の非同期APIへ
 統合するかは将来の要検討事項(TASKS.md 未解決事項参照)。
+
+## D-016: JobRun は lease 方式で並行実行を防止(2026-07-05, 外部レビュー起点)
+
+status="started" の JobRun は `started_at + JOB_LEASE_TIMEOUT_SECONDS`(デフォルト3600秒)
+以内なら「実行中」とみなし fn を実行せず in_progress を返す(サービス層は
+JobInProgressError を送出、API は 409 にマップ)。lease 超過はクラッシュ残骸として
+attempt+1 で再実行。二重投稿・二重レンダリング防止。
+
+## D-017: 失敗記録は新規セッションで永続化(2026-07-05, 外部レビュー起点)
+
+Celeryタスクの except では session.rollback() 後に、新規セッションで
+JobRun(failed+last_error)・失敗状態遷移(RENDER_FAILED/UPLOAD_FAILED等)・
+Publication(upload_status="failed")を再記録する。例外には idempotency_key /
+publication_idempotency_key 属性を付与してタスクラッパーへ伝搬する。
+予算 reserve/release は同一トランザクション内で両方消えるため残高整合は保たれる。
+
+## D-018: Asset.role 列で成果物の同一性をDB制約化(2026-07-05, 外部レビュー起点)
+
+Asset に role 列("background" / "audio:{n}" / "subtitle:srt|vtt" / "endcard")+
+UNIQUE(video_project_id, role)。マイグレーションの既存行 backfill は meta JSON から
+意味的に導出(導出不能・衝突時のみ id フォールバック)。

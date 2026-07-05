@@ -12,16 +12,23 @@ import json
 import wave
 from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.paths import resolve_generated_path
-from app.models.asset import Asset
+from app.models.asset import (
+    ASSET_ROLE_BACKGROUND,
+    ASSET_ROLE_SUBTITLE_SRT,
+    ASSET_ROLE_SUBTITLE_VTT,
+    Asset,
+    asset_role_for_audio_section,
+)
 from app.models.job_run import JobRun
 from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.tts.base import TTSProvider
-from app.services.jobs import run_idempotent, run_idempotent_async
+from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
 from app.services.media import renderer, subtitles
 from app.services.media.probe import inspect_rendered_video
 from app.services.state_machine import transition
@@ -73,35 +80,29 @@ def build_prepare_assets_idempotency_key(video_project_id: str) -> str:
     return f"prepare_assets:{video_project_id}"
 
 
-def _meta_match_key(meta: dict) -> tuple:
-    """Assetの同一性判定キー。0のような偽値でも誤マッチしないようタプル全体で比較する。"""
-    return (meta.get("role"), meta.get("section_index"), meta.get("kind"))
-
-
 def _upsert_asset(
     session: Session,
     *,
     video_project_id: str,
     asset_type: str,
+    role: str,
     file_path: Path,
     checksum: str,
     meta: dict,
 ) -> Asset:
     """既存Assetがあれば更新、なければ新規作成する。
 
-    同一性は `(video_project_id, asset_type, meta.role/section_index/kind)` 相当で判定する。
+    同一性は `UNIQUE(video_project_id, role)` 制約で判定する(メタデータ依存の同一性
+    判定は廃止)。並行実行等でINTEGRITY違反になった場合は既存行を取得して更新する。
     """
-    existing_assets = (
+    existing = (
         session.query(Asset)
-        .filter(Asset.video_project_id == video_project_id, Asset.asset_type == asset_type)
-        .all()
-    )
-    match_key = _meta_match_key(meta)
-    existing = next(
-        (a for a in existing_assets if _meta_match_key(a.meta or {}) == match_key), None
+        .filter(Asset.video_project_id == video_project_id, Asset.role == role)
+        .one_or_none()
     )
 
     if existing is not None:
+        existing.asset_type = asset_type
         existing.file_path = str(file_path)
         existing.checksum = checksum
         existing.meta = meta
@@ -110,12 +111,31 @@ def _upsert_asset(
     asset = Asset(
         video_project_id=video_project_id,
         asset_type=asset_type,
+        role=role,
         file_path=str(file_path),
         source="generated",
         checksum=checksum,
         meta=meta,
     )
-    session.add(asset)
+    try:
+        with session.begin_nested():
+            session.add(asset)
+            session.flush()
+    except IntegrityError:
+        # 並行実行で他が先に同じroleでINSERTした -> 自分は追加せず既存行を取得して更新する。
+        session.expunge(asset)
+        winner = (
+            session.query(Asset)
+            .filter(Asset.video_project_id == video_project_id, Asset.role == role)
+            .one_or_none()
+        )
+        if winner is None:  # pragma: no cover - 理論上到達しない防御的分岐
+            raise
+        winner.asset_type = asset_type
+        winner.file_path = str(file_path)
+        winner.checksum = checksum
+        winner.meta = meta
+        return winner
     return asset
 
 
@@ -135,6 +155,7 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
             session,
             video_project_id=video_project_id,
             asset_type="image",
+            role=ASSET_ROLE_BACKGROUND,
             file_path=output_path,
             checksum=checksum,
             meta={"role": "background"},
@@ -152,6 +173,8 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
         idempotency_key=idempotency_key,
         fn=_do_prepare,
     )
+    if job_result.status == "in_progress":
+        raise JobInProgressError(f"prepare_assets already in progress: {idempotency_key}")
     if job_result.status == "skipped":
         return project
     assert job_result.result is not None
@@ -226,6 +249,7 @@ async def synthesize_audio(
                 session,
                 video_project_id=video_project_id,
                 asset_type="audio",
+                role=asset_role_for_audio_section(_index),
                 file_path=_output_path,
                 checksum=checksum,
                 meta={
@@ -245,14 +269,16 @@ async def synthesize_audio(
             idempotency_key=idempotency_key,
             fn=_do_synthesize,
         )
+        if job_result.status == "in_progress":
+            raise JobInProgressError(f"synthesize_audio already in progress: {idempotency_key}")
         if job_result.status == "skipped":
-            existing = (
+            match = (
                 session.query(Asset)
-                .filter(Asset.video_project_id == video_project_id, Asset.asset_type == "audio")
-                .all()
-            )
-            match = next(
-                (a for a in existing if (a.meta or {}).get("section_index") == index), None
+                .filter(
+                    Asset.video_project_id == video_project_id,
+                    Asset.role == asset_role_for_audio_section(index),
+                )
+                .one_or_none()
             )
             if match is None:  # pragma: no cover - 理論上到達しない防御的分岐
                 raise RuntimeError(
@@ -288,7 +314,10 @@ def _fetch_ordered_audio_assets(session: Session, video_project_id: str) -> list
 def _fetch_background_asset(session: Session, video_project_id: str) -> Asset:
     asset = (
         session.query(Asset)
-        .filter(Asset.video_project_id == video_project_id, Asset.asset_type == "image")
+        .filter(
+            Asset.video_project_id == video_project_id,
+            Asset.role == ASSET_ROLE_BACKGROUND,
+        )
         .one_or_none()
     )
     if asset is None:
@@ -424,6 +453,7 @@ def render_video(
             session,
             video_project_id=video_project_id,
             asset_type="subtitle",
+            role=ASSET_ROLE_SUBTITLE_SRT,
             file_path=srt_path,
             checksum=renderer.compute_file_checksum(srt_path),
             meta={"kind": "srt"},
@@ -432,6 +462,7 @@ def render_video(
             session,
             video_project_id=video_project_id,
             asset_type="subtitle",
+            role=ASSET_ROLE_SUBTITLE_VTT,
             file_path=vtt_path,
             checksum=renderer.compute_file_checksum(vtt_path),
             meta={"kind": "vtt"},
@@ -448,6 +479,8 @@ def render_video(
         idempotency_key=idempotency_key,
         fn=_do_render,
     )
+    if job_result.status == "in_progress":
+        raise JobInProgressError(f"render_video already in progress: {idempotency_key}")
     if job_result.status == "skipped":
         return project
     assert job_result.result is not None

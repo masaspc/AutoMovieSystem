@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models.job_run import JobRun
-from app.services.jobs import run_idempotent
+from app.services.jobs import JobResult, run_idempotent
 
 
 def test_run_idempotent_calls_fn_once_for_same_key(db_session: Session) -> None:
@@ -83,7 +85,7 @@ def test_run_idempotent_records_failure_then_retries_with_incremented_attempt(
 
 
 def test_run_idempotent_reruns_stale_started_job(db_session: Session) -> None:
-    """クラッシュでstartedのまま残ったJobRunは再実行される。"""
+    """lease超過(クラッシュでstartedのまま残った)JobRunは再実行される(D-016)。"""
     stale = JobRun(
         job_type="demo",
         entity_type="topic",
@@ -91,6 +93,8 @@ def test_run_idempotent_reruns_stale_started_job(db_session: Session) -> None:
         idempotency_key="demo:t-3",
         status="started",
         attempt=1,
+        # lease(デフォルト3600秒)を超過させ、クラッシュ残骸(stale)として扱わせる。
+        started_at=datetime.utcnow() - timedelta(hours=2),
     )
     db_session.add(stale)
     db_session.flush()
@@ -113,3 +117,39 @@ def test_run_idempotent_reruns_stale_started_job(db_session: Session) -> None:
     assert len(calls) == 1
     assert result.status == "succeeded"
     assert result.job_run.attempt == 2
+
+
+def test_run_idempotent_returns_in_progress_when_lease_active(db_session: Session) -> None:
+    """lease有効期間内のstartedなJobRunは、他プロセスが実行中とみなしfnを呼ばない(D-016)。"""
+    active = JobRun(
+        job_type="demo",
+        entity_type="topic",
+        entity_id="t-4",
+        idempotency_key="demo:t-4",
+        status="started",
+        attempt=1,
+        started_at=datetime.utcnow(),
+    )
+    db_session.add(active)
+    db_session.flush()
+
+    calls: list[int] = []
+
+    def _fn() -> str:
+        calls.append(1)
+        return "ok"
+
+    result = run_idempotent(
+        db_session,
+        job_type="demo",
+        entity_type="topic",
+        entity_id="t-4",
+        idempotency_key="demo:t-4",
+        fn=_fn,
+    )
+
+    assert len(calls) == 0
+    assert isinstance(result, JobResult)
+    assert result.status == "in_progress"
+    assert result.job_run.id == active.id
+    assert result.job_run.attempt == 1

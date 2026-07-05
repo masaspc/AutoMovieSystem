@@ -7,7 +7,9 @@ import asyncio
 from app.core.logging import get_logger
 from app.db.session import SessionLocal
 from app.providers.tts.factory import get_tts_provider
+from app.services.jobs import record_failure_in_new_session
 from app.services.media.pipeline import prepare_assets, render_video, synthesize_audio
+from app.services.state_machine import apply_failure_transition_in_new_session
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -21,8 +23,17 @@ def prepare_assets_task(video_project_id: str) -> str:
         project = prepare_assets(session, video_project_id=video_project_id)
         session.commit()
         return project.id
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        idempotency_key = getattr(exc, "idempotency_key", None)
+        if idempotency_key is not None:
+            record_failure_in_new_session(
+                idempotency_key=idempotency_key,
+                job_type="prepare_assets",
+                entity_type="video_project",
+                entity_id=video_project_id,
+                error=exc,
+            )
         raise
     finally:
         session.close()
@@ -39,8 +50,17 @@ def synthesize_audio_task(video_project_id: str) -> str:
         )
         session.commit()
         return f"{len(assets)} assets synthesized"
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        idempotency_key = getattr(exc, "idempotency_key", None)
+        if idempotency_key is not None:
+            record_failure_in_new_session(
+                idempotency_key=idempotency_key,
+                job_type="synthesize_audio",
+                entity_type="video_project",
+                entity_id=video_project_id,
+                error=exc,
+            )
         raise
     finally:
         session.close()
@@ -54,8 +74,22 @@ def render_video_task(video_project_id: str) -> str:
         project = render_video(session, video_project_id=video_project_id)
         session.commit()
         return project.id
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        idempotency_key = getattr(exc, "idempotency_key", None)
+        if idempotency_key is not None:
+            record_failure_in_new_session(
+                idempotency_key=idempotency_key,
+                job_type="render_video",
+                entity_type="video_project",
+                entity_id=video_project_id,
+                error=exc,
+            )
+            # D-017: サービス層内のRENDER_FAILED遷移はflushのみでrollbackにより消えて
+            # いるため、新規セッションで再適用する(遷移元状態が合致する場合のみ)。
+            apply_failure_transition_in_new_session(
+                video_project_id=video_project_id, to_state="RENDER_FAILED"
+            )
         raise
     finally:
         session.close()

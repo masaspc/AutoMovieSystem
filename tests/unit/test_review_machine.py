@@ -85,6 +85,7 @@ def _make_project(
         asset = Asset(
             video_project_id=project.id,
             asset_type="subtitle",
+            role="subtitle:srt",
             file_path=str(srt_path),
             checksum="s" * 8,
             meta={"kind": "srt"},

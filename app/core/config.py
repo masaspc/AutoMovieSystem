@@ -68,6 +68,12 @@ class Settings(BaseSettings):
 
     GENERATED_DIR: str = "generated"
 
+    # ジョブのlease期間(秒。D-016)。JobRun.status=="started" のまま
+    # `started_at + この秒数` を超えていなければ「他プロセスが実行中」とみなし、
+    # 再実行せず in_progress を返す(並行実行防止)。超過していればクラッシュ残骸(stale)
+    # とみなし、従来どおり attempt をインクリメントして再実行する。
+    JOB_LEASE_TIMEOUT_SECONDS: int = 3600
+
     # FFmpeg/ffprobe呼び出しのタイムアウト(秒)。
     MEDIA_FFMPEG_TIMEOUT_SECONDS: float = 300.0
     MEDIA_FFPROBE_TIMEOUT_SECONDS: float = 30.0

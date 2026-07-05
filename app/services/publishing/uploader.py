@@ -32,7 +32,7 @@ from app.models.review import Review
 from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.youtube.base import UploadRequest, YouTubeProvider
-from app.services.jobs import run_idempotent_async
+from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.media.renderer import compute_file_checksum
 from app.services.state_machine import transition
 
@@ -281,6 +281,7 @@ async def upload_video(
             publication.last_error = mask_secrets_in_text(str(exc))[:_MAX_LAST_ERROR_LENGTH]
             transition(project, "UPLOAD_FAILED")
             session.flush()
+            exc.publication_idempotency_key = idempotency_key  # type: ignore[attr-defined]
             raise
 
     job_result = await run_idempotent_async(
@@ -291,6 +292,8 @@ async def upload_video(
         idempotency_key=idempotency_key,
         fn=_do_upload,
     )
+    if job_result.status == "in_progress":
+        raise JobInProgressError(f"upload_video already in progress: {idempotency_key}")
     if job_result.status == "skipped":
         existing = (
             session.query(Publication).filter(Publication.idempotency_key == idempotency_key).one()
@@ -306,3 +309,70 @@ def restart_upload(session: Session, *, video_project_id: str) -> VideoProject:
     transition(project, "UPLOAD_READY")
     session.flush()
     return project
+
+
+def record_publication_failure_in_new_session(
+    *, video_project_id: str, idempotency_key: str, error: BaseException
+) -> None:
+    """Persist Publication failure after a Celery task rollback.
+
+    `upload_video()` records `Publication.upload_status="failed"` inside the caller's
+    transaction. Celery task wrappers roll that transaction back before re-raising, so
+    this helper recreates or updates the Publication in a fresh transaction.
+    """
+    from app.db.session import SessionLocal
+
+    new_session = SessionLocal()
+    try:
+        project = new_session.get(VideoProject, video_project_id)
+        if project is None:
+            logger.warning(
+                "publication_failure_project_not_found",
+                video_project_id=video_project_id,
+                idempotency_key=idempotency_key,
+            )
+            return
+
+        script = new_session.get(Script, project.script_id) if project.script_id else None
+        body = script.body if script is not None and script.body else {}
+        title = script.title if script is not None else f"VideoProject {video_project_id}"
+        description = str(body.get("description") or "")
+        tags = list(body.get("tags") or [])
+        privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
+
+        publication = (
+            new_session.query(Publication)
+            .filter(Publication.idempotency_key == idempotency_key)
+            .one_or_none()
+        )
+        if publication is None:
+            publication = Publication(
+                video_project_id=video_project_id,
+                title=title,
+                description=description,
+                tags=tags,
+                privacy_status=privacy_status,
+                idempotency_key=idempotency_key,
+                upload_status="failed",
+            )
+            new_session.add(publication)
+        else:
+            publication.upload_status = "failed"
+
+        publication.last_error = mask_secrets_in_text(str(error))[:_MAX_LAST_ERROR_LENGTH]
+        new_session.commit()
+        logger.info(
+            "publication_failure_persisted_in_new_session",
+            video_project_id=video_project_id,
+            idempotency_key=idempotency_key,
+        )
+    except Exception:
+        new_session.rollback()
+        logger.error(
+            "record_publication_failure_in_new_session_failed",
+            video_project_id=video_project_id,
+            idempotency_key=idempotency_key,
+        )
+        raise
+    finally:
+        new_session.close()

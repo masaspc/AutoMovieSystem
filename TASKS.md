@@ -17,7 +17,12 @@
       Celeryタスク+API(POST /api/video-projects/{id}/upload, /api/publications/{id}/schedule)、
       OAuthセットアップスクリプト+手順書(docs/youtube-oauth.md)。unit/contract 46件追加、計225件パス。
       alembic upgrade/downgrade往復・ruff・mypy クリーン
-- [ ] Phase 6: 分析・コメント・フィードバック
+- [x] Phase 6: 分析・コメント・フィードバック — VideoMetricDaily/Comment/Insight モデル+マイグレーション、
+      Fake/Real YouTubeProvider の統計・コメント取得口を利用した指標同期/コメント差分同期、
+      削除済みコメントの状態更新、ルールベース分類(QUESTION/NEXT_TOPIC_REQUEST等)、
+      コメント/指標由来Insight生成、コメント由来Topic候補生成、
+      API(同期・一覧取得) + Celeryタスク(単体/一括同期)。unit/API 9件追加、計240件パス。
+      alembic upgrade head・ruff・mypy クリーン
 - [ ] Phase 7: 管理画面 + 運用
 - [ ] Phase 8: 総合検証
 

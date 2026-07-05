@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -204,7 +205,7 @@ def test_reconcile_after_crash_finds_existing_video_without_reupload(
         )
     )
 
-    # JobRun/Publicationがstarted状態のまま残っている状況を再現する。
+    # JobRun/Publicationがstarted状態のまま残っている状況を再現する(lease超過=stale)。
     db_session.add(
         JobRun(
             job_type="upload_video",
@@ -212,6 +213,7 @@ def test_reconcile_after_crash_finds_existing_video_without_reupload(
             entity_id=project.id,
             idempotency_key=idempotency_key,
             status="started",
+            started_at=datetime.utcnow() - timedelta(hours=2),
         )
     )
     db_session.add(
@@ -262,6 +264,7 @@ def test_reconcile_not_found_falls_back_to_real_upload(db_session: Session, tmp_
             entity_id=project.id,
             idempotency_key=idempotency_key,
             status="started",
+            started_at=datetime.utcnow() - timedelta(hours=2),
         )
     )
     db_session.add(

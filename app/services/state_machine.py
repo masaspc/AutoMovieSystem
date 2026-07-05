@@ -24,7 +24,10 @@
 
 from __future__ import annotations
 
+from app.core.logging import get_logger
 from app.models.video_project import VideoProject
+
+logger = get_logger(__name__)
 
 # 正常系状態(順方向一本道)。
 NORMAL_STATUSES: tuple[str, ...] = (
@@ -146,3 +149,48 @@ def transition(project: VideoProject, to_state: str) -> VideoProject:
 
     project.status = to_state
     return project
+
+
+def apply_failure_transition_in_new_session(*, video_project_id: str, to_state: str) -> None:
+    """D-017: Celeryタスクラッパーの except 節専用ヘルパー。
+
+    サービス層内で行われた失敗状態遷移(例: RENDER_FAILED)は呼び出し元セッションの
+    flushのみで、タスクラッパーが `session.rollback()` すると消える。本関数は
+    **新規セッション・新規トランザクション**で現在の `VideoProject.status` を読み直し、
+    遷移表上 `to_state` へ遷移可能な場合のみ適用してcommitする。遷移元状態が既に
+    想定と異なる(二重適用・不整合)場合は何もせずログのみ出す(fail-safe)。
+    """
+    from app.db.session import SessionLocal  # 遅延import(テストでの差し替えを可能にする)
+
+    new_session = SessionLocal()
+    try:
+        project = new_session.get(VideoProject, video_project_id)
+        if project is None:
+            logger.warning(
+                "failure_transition_video_project_not_found",
+                video_project_id=video_project_id,
+                to_state=to_state,
+            )
+            return
+        try:
+            transition(project, to_state)
+        except (InvalidTransitionError, UnknownStateError) as exc:
+            logger.info(
+                "failure_transition_skipped_current_state_mismatch",
+                video_project_id=video_project_id,
+                to_state=to_state,
+                current_state=project.status,
+                error=str(exc),
+            )
+            return
+        new_session.commit()
+        logger.info(
+            "failure_transition_applied_in_new_session",
+            video_project_id=video_project_id,
+            to_state=to_state,
+        )
+    except Exception:
+        new_session.rollback()
+        raise
+    finally:
+        new_session.close()

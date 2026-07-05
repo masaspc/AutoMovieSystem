@@ -7,7 +7,9 @@ import asyncio
 from app.core.logging import get_logger
 from app.db.session import SessionLocal
 from app.providers.llm.factory import get_llm_provider
+from app.services.jobs import record_failure_in_new_session
 from app.services.reviews.service import run_automated_review
+from app.services.state_machine import apply_failure_transition_in_new_session
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -24,8 +26,22 @@ def run_automated_review_task(video_project_id: str) -> str:
         )
         session.commit()
         return project.id
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        idempotency_key = getattr(exc, "idempotency_key", None)
+        if idempotency_key is not None:
+            record_failure_in_new_session(
+                idempotency_key=idempotency_key,
+                job_type="automated_review",
+                entity_type="video_project",
+                entity_id=video_project_id,
+                error=exc,
+            )
+            # D-017: サービス層内のREVIEW_FAILED遷移はflushのみでrollbackにより消えて
+            # いるため、新規セッションで再適用する(遷移元状態が合致する場合のみ)。
+            apply_failure_transition_in_new_session(
+                video_project_id=video_project_id, to_state="REVIEW_FAILED"
+            )
         raise
     finally:
         session.close()

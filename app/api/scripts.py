@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.script import Script
 from app.providers.llm.factory import get_llm_provider
 from app.schemas.scripts import FindingResponse, ScriptResponse
+from app.services.jobs import JobInProgressError
 from app.services.scripts.generator import TopicNotFoundError, generate_script
 from app.services.scripts.inspector import inspect_script_with_history
 
@@ -35,7 +36,11 @@ def generate_script_endpoint(topic_id: str, db: DbSession) -> ScriptResponse:
     try:
         script = asyncio.run(generate_script(db, topic_id=topic_id, provider=provider))
     except TopicNotFoundError as exc:
+        db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JobInProgressError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     db.refresh(script)
     return _to_response(db, script)

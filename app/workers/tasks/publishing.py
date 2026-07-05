@@ -8,8 +8,13 @@ from datetime import datetime
 from app.core.logging import get_logger
 from app.db.session import SessionLocal
 from app.providers.youtube.factory import get_youtube_provider
+from app.services.jobs import record_failure_in_new_session
 from app.services.publishing.scheduler import schedule_publication
-from app.services.publishing.uploader import upload_video
+from app.services.publishing.uploader import (
+    record_publication_failure_in_new_session,
+    upload_video,
+)
+from app.services.state_machine import apply_failure_transition_in_new_session
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -26,8 +31,29 @@ def upload_video_task(video_project_id: str) -> str:
         )
         session.commit()
         return publication.id
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        idempotency_key = getattr(exc, "idempotency_key", None)
+        if idempotency_key is not None:
+            record_failure_in_new_session(
+                idempotency_key=idempotency_key,
+                job_type="upload_video",
+                entity_type="video_project",
+                entity_id=video_project_id,
+                error=exc,
+            )
+            # D-017: サービス層内のUPLOAD_FAILED遷移はflushのみでrollbackにより消えて
+            # いるため、新規セッションで再適用する(遷移元状態が合致する場合のみ)。
+            apply_failure_transition_in_new_session(
+                video_project_id=video_project_id, to_state="UPLOAD_FAILED"
+            )
+        publication_idempotency_key = getattr(exc, "publication_idempotency_key", None)
+        if publication_idempotency_key is not None:
+            record_publication_failure_in_new_session(
+                video_project_id=video_project_id,
+                idempotency_key=publication_idempotency_key,
+                error=exc,
+            )
         raise
     finally:
         session.close()

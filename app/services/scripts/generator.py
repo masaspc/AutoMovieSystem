@@ -12,7 +12,7 @@ from app.models.script import Script
 from app.models.topic import Topic
 from app.providers.llm.base import LLMProvider
 from app.schemas.script_content import ScriptContent
-from app.services.jobs import run_idempotent_async
+from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
 
 logger = get_logger(__name__)
@@ -120,6 +120,9 @@ async def generate_script(
         fn=_do_generate,
         trace_id=trace_id,
     )
+
+    if job_result.status == "in_progress":
+        raise JobInProgressError(f"generate_script already in progress: {idempotency_key}")
 
     if job_result.status == "skipped":
         existing_script = (

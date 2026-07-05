@@ -16,7 +16,7 @@ from app.models.review import Review
 from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
-from app.services.jobs import run_idempotent_async
+from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.reviews import machine
 from app.services.reviews.content import inspect_content
 from app.services.reviews.findings import Finding, to_dict
@@ -150,6 +150,8 @@ async def run_automated_review(
         idempotency_key=idempotency_key,
         fn=_do_review,
     )
+    if job_result.status == "in_progress":
+        raise JobInProgressError(f"automated_review already in progress: {idempotency_key}")
     if job_result.status == "skipped":
         return project
     assert job_result.result is not None

@@ -16,6 +16,7 @@ from app.providers.youtube.base import (
 )
 from app.providers.youtube.factory import get_youtube_provider
 from app.schemas.publications import PublicationResponse, ScheduleRequest, ScheduleResponse
+from app.services.jobs import JobInProgressError
 from app.services.publishing.scheduler import PublicationNotFoundError, schedule_publication
 from app.services.publishing.uploader import (
     ScriptNotFoundError,
@@ -46,6 +47,9 @@ def upload_video_endpoint(video_project_id: str, db: DbSession) -> PublicationRe
     except UploadPreconditionError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JobInProgressError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except QuotaExceededError as exc:
         db.commit()
         raise HTTPException(status_code=429, detail=str(exc)) from exc
