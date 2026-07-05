@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}コメント一覧{% endblock %}
+{% block content %}
+<section>
+  <h2>コメント一覧</h2>
+
+  <h3>カテゴリ別件数</h3>
+  <table>
+    <tr><th>カテゴリ</th><th>件数</th></tr>
+    {% for category, count in category_summary.items() %}
+    <tr><td>{{ category }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="get" action="/comments">
+    <label>カテゴリ: <input type="text" name="category" value="{{ category_filter }}" /></label>
+    <button type="submit">絞り込み</button>
+  </form>
+
+  <table>
+    <tr><th>カテゴリ</th><th>感情</th><th>本文</th><th>要対応</th></tr>
+    {% for comment in comments %}
+    <tr>
+      <td>{{ comment.category }}</td>
+      <td>{{ comment.sentiment }}</td>
+      <td>{{ comment.text }}</td>
+      <td>{% if comment.requires_response %}要{% else %}-{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

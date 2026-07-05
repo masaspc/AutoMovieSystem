@@ -4,14 +4,35 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Auto Movie System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='admin.css') }}" />
   <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>
   <header>
     <h1>Auto Movie System</h1>
+    <nav class="admin-nav">
+      <ul>
+        <li><a href="/dashboard">ダッシュボード</a></li>
+        <li><a href="/topics">企画</a></li>
+        <li><a href="/video-projects">動画プロジェクト</a></li>
+        <li><a href="/reviews">レビュー</a></li>
+        <li><a href="/publications">投稿</a></li>
+        <li><a href="/comments">コメント</a></li>
+        <li><a href="/insights">改善提案</a></li>
+        <li><a href="/jobs">ジョブ</a></li>
+        <li><a href="/usage">利用状況</a></li>
+        <li><a href="/settings">設定</a></li>
+      </ul>
+    </nav>
   </header>
   <main>
+    {% if request.query_params.get('error') %}
+    <div class="flash-error">{{ request.query_params.get('error') }}</div>
+    {% endif %}
+    {% if request.query_params.get('info') %}
+    <div class="flash-info">{{ request.query_params.get('info') }}</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

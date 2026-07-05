@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}設定{% endblock %}
+{% block content %}
+<section>
+  <h2>設定(読み取り専用)</h2>
+
+  <h3>主要設定</h3>
+  <table>
+    {% for key, value in general.items() %}
+    <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>モデルマッピング(model_policy -> モデルID)</h3>
+  <table>
+    {% for policy, model in model_mapping.items() %}
+    <tr><th>{{ policy }}</th><td>{{ model }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>シークレット設定状況(値は表示しません)</h3>
+  <table>
+    {% for key, status in secrets_status.items() %}
+    <tr><th>{{ key }}</th><td>{{ status }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

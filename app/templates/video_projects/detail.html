@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}動画プロジェクト - {{ project.id }}{% endblock %}
+{% block content %}
+<section>
+  <h2>動画プロジェクト {{ project.id }}</h2>
+  <p>企画: {{ topic.title if topic else project.topic_id }}</p>
+  <p>ステータス: {{ project.status }}</p>
+
+  {% if script %}
+  <h3>台本(バージョン {{ script.version }})</h3>
+  <p>{{ script.title }}</p>
+  <ol>
+    {% for section in (script.body.get("sections") or []) %}
+    <li>
+      <strong>{{ section.get("heading", "") }}</strong>
+      <p>{{ section.get("narration", "") }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p>台本は未生成です</p>
+  {% endif %}
+
+  <h3>出典(Evidence)</h3>
+  <ul>
+    {% for evidence in evidence_list %}
+    <li>{{ evidence.claim }}(<a href="{{ evidence.source_url }}">{{ evidence.source_url }}</a>)</li>
+    {% endfor %}
+  </ul>
+
+  <h3>素材(Asset)一覧</h3>
+  <table>
+    <tr><th>種別</th><th>役割</th><th>パス</th></tr>
+    {% for asset in assets %}
+    <tr><td>{{ asset.asset_type }}</td><td>{{ asset.role }}</td><td>{{ asset.file_path }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>動画プレビュー</h3>
+  {% if media_available %}
+  <video class="preview" controls src="/media/{{ project.id }}"></video>
+  {% else %}
+  <p>動画は未生成です</p>
+  {% endif %}
+
+  <h3>自動レビュー結果</h3>
+  <table>
+    <tr><th>種別</th><th>バージョン</th><th>合否</th><th>スコア</th></tr>
+    {% for review in reviews %}
+    <tr>
+      <td>{{ review.reviewer_type }}</td>
+      <td>{{ review.review_version }}</td>
+      <td>{% if review.passed %}合格{% else %}不合格{% endif %}</td>
+      <td>{{ review.score }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  {% if blocking_findings %}
+  <h4>Blocking Findings</h4>
+  <ul>
+    {% for finding in blocking_findings %}
+    <li data-testid="blocking-finding">[{{ finding.code }}] {{ finding.message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3>承認・却下</h3>
+  {% if approval %}
+  <p>決裁済み: {{ approval.decision }}(決裁者: {{ approval.decided_by }})</p>
+  {% else %}
+  <form class="inline" method="post" action="/video-projects/{{ project.id }}/approve">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>決裁者: <input type="text" name="decided_by" value="admin" required /></label>
+    <button type="submit">承認</button>
+  </form>
+  <form class="inline" method="post" action="/video-projects/{{ project.id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>決裁者: <input type="text" name="decided_by" value="admin" required /></label>
+    <button type="submit">却下</button>
+  </form>
+  {% endif %}
+
+  <h3>パイプライン進行</h3>
+  {% if next_action %}
+  <form method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit">{{ next_action[0] }}</button>
+  </form>
+  {% else %}
+  <p>現在実行可能なパイプラインステップはありません(失敗状態の場合は /jobs から再実行してください)</p>
+  {% endif %}
+
+  <h3>投稿状態</h3>
+  {% if publication %}
+  <p>{{ publication.upload_status }} / {{ publication.youtube_video_id or "未発行" }}(公開範囲: {{ publication.privacy_status }})</p>
+  {% else %}
+  <p>未投稿です</p>
+  {% endif %}
+
+  <h3>投稿後指標</h3>
+  <table>
+    <tr><th>日付</th><th>再生数</th><th>CTR</th><th>視聴維持率</th><th>コメント数</th></tr>
+    {% for metric in metrics %}
+    <tr>
+      <td>{{ metric.metric_date }}</td>
+      <td>{{ metric.views }}</td>
+      <td>{{ metric.ctr }}</td>
+      <td>{{ metric.average_view_percentage }}</td>
+      <td>{{ metric.comments_count }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h3>関連コメント</h3>
+  <table>
+    <tr><th>カテゴリ</th><th>本文</th></tr>
+    {% for comment in comments %}
+    <tr><td>{{ comment.category }}</td><td>{{ comment.text }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>改善提案(Insight)</h3>
+  <table>
+    <tr><th>種別</th><th>内容</th><th>推奨アクション</th></tr>
+    {% for insight in insights %}
+    <tr>
+      <td>{{ insight.insight_type }}</td>
+      <td>{{ insight.finding }}</td>
+      <td>{{ insight.recommended_action }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

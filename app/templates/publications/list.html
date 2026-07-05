@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}投稿一覧{% endblock %}
+{% block content %}
+<section>
+  <h2>投稿一覧</h2>
+  <form method="get" action="/publications">
+    <label>アップロード状態: <input type="text" name="upload_status" value="{{ upload_status_filter }}" /></label>
+    <button type="submit">絞り込み</button>
+  </form>
+  <table>
+    <tr><th>タイトル</th><th>アップロード状態</th><th>YouTube動画ID</th><th>公開範囲</th><th>公開予約</th></tr>
+    {% for publication in publications %}
+    <tr>
+      <td><a href="/video-projects/{{ publication.video_project_id }}">{{ publication.title }}</a></td>
+      <td>{{ publication.upload_status }}</td>
+      <td>{{ publication.youtube_video_id or "未発行" }}</td>
+      <td>{{ publication.privacy_status }}</td>
+      <td>{{ publication.scheduled_at or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

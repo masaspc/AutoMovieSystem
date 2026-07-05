@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}ジョブ一覧{% endblock %}
+{% block content %}
+<section>
+  <h2>ジョブ(JobRun)一覧</h2>
+
+  <form method="get" action="/jobs">
+    <label>ステータス: <input type="text" name="status" value="{{ status_filter }}" /></label>
+    <label>ジョブ種別: <input type="text" name="job_type" value="{{ job_type_filter }}" /></label>
+    <button type="submit">絞り込み</button>
+  </form>
+
+  <table>
+    <tr><th>種別</th><th>対象</th><th>ステータス</th><th>試行回数</th><th>最終エラー</th><th>操作</th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td>{{ job.job_type }}</td>
+      <td>{{ job.entity_type }}:{{ job.entity_id }}</td>
+      <td>{{ job.status }}</td>
+      <td>{{ job.attempt }}</td>
+      <td>{{ job.last_error or "-" }}</td>
+      <td>
+        {% if job.status == "failed" %}
+        <form class="inline" method="post" action="/jobs/{{ job.id }}/retry">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit">再実行</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

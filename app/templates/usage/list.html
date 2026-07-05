@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}利用状況{% endblock %}
+{% block content %}
+<section>
+  <h2>AI利用状況(UsageRecord)</h2>
+
+  <h3>日別費用(マイクロUSD)</h3>
+  <table>
+    <tr><th>日付</th><th>費用(μUSD)</th></tr>
+    {% for day, cost in by_day.items() %}
+    <tr><td>{{ day }}</td><td>{{ cost }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>operation別費用</h3>
+  <table>
+    <tr><th>operation</th><th>費用(μUSD)</th></tr>
+    {% for operation, cost in by_operation.items() %}
+    <tr><td>{{ operation }}</td><td>{{ cost }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>モデル別費用</h3>
+  <table>
+    <tr><th>モデル</th><th>費用(μUSD)</th></tr>
+    {% for model, cost in by_model.items() %}
+    <tr><td>{{ model }}</td><td>{{ cost }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>予算台帳(BudgetLedger)</h3>
+  <table>
+    <tr><th>種別</th><th>期間</th><th>予算</th><th>予約</th><th>確定</th><th>消費率</th></tr>
+    {% for ledger in ledgers %}
+    <tr>
+      <td>{{ ledger.period_type }}</td>
+      <td>{{ ledger.period_key }}</td>
+      <td>{{ ledger.budget_micro_usd }}</td>
+      <td>{{ ledger.reserved_micro_usd }}</td>
+      <td>{{ ledger.committed_micro_usd }}</td>
+      <td>
+        {{ (ledger_ratios[ledger.id] * 100) | round(1) }}%
+        {% if ledger_ratios[ledger.id] >= budget_warning_threshold %}<span class="badge-warning">警告</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h3>直近のUsageRecord(最大100件)</h3>
+  <table>
+    <tr><th>日時</th><th>provider</th><th>モデル</th><th>operation</th><th>費用(μUSD)</th><th>成功</th></tr>
+    {% for record in records %}
+    <tr>
+      <td>{{ record.created_at }}</td>
+      <td>{{ record.provider }}</td>
+      <td>{{ record.model }}</td>
+      <td>{{ record.operation }}</td>
+      <td>{{ record.estimated_cost_micro_usd }}</td>
+      <td>{% if record.success %}成功{% else %}失敗{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

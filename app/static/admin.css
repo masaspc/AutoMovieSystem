@@ -1,0 +1,129 @@
+/* 管理画面共通スタイル(最小限・テーブル中心)。SPAフレームワーク・CDN不使用。 */
+:root {
+  color-scheme: light;
+  --border-color: #d0d5dd;
+  --bg-warn: #fff3cd;
+  --bg-danger: #f8d7da;
+  --bg-ok: #d1f5df;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", "Yu Gothic", sans-serif;
+  margin: 0;
+  color: #1a1a1a;
+  background: #f7f8fa;
+}
+
+header {
+  background: #1f2937;
+  color: #fff;
+  padding: 0.5rem 1rem;
+}
+
+header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+}
+
+nav.admin-nav ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+nav.admin-nav a {
+  color: #e5e7eb;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+nav.admin-nav a:hover {
+  text-decoration: underline;
+}
+
+main {
+  padding: 1rem 1.25rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  background: #fff;
+}
+
+th, td {
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+th {
+  background: #eef1f5;
+}
+
+.flash-error {
+  background: var(--bg-danger);
+  border: 1px solid #e53935;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.flash-info {
+  background: var(--bg-ok);
+  border: 1px solid #2e7d32;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.badge-warning {
+  background: var(--bg-warn);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+
+.budget-bar {
+  background: #e5e7eb;
+  border-radius: 4px;
+  height: 12px;
+  width: 240px;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.budget-bar > span {
+  display: block;
+  height: 100%;
+  background: #2e7d32;
+}
+
+.budget-bar.over-threshold > span {
+  background: #e53935;
+}
+
+form.inline {
+  display: inline;
+}
+
+fieldset {
+  border: 1px solid var(--border-color);
+  margin: 0.75rem 0;
+  background: #fff;
+}
+
+video.preview {
+  max-width: 640px;
+  width: 100%;
+  background: #000;
+}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}企画一覧{% endblock %}
+{% block content %}
+<section>
+  <h2>企画(Topic)一覧</h2>
+
+  <form method="get" action="/topics">
+    <label>ステータス:
+      <input type="text" name="status" value="{{ status_filter }}" />
+    </label>
+    <label>チャンネルID:
+      <input type="text" name="channel_id" value="{{ channel_filter }}" />
+    </label>
+    <button type="submit">絞り込み</button>
+  </form>
+
+  <table>
+    <tr>
+      <th>タイトル</th><th>スコア</th><th>ステータス</th><th>チャンネル</th><th>操作</th>
+    </tr>
+    {% for topic in topics %}
+    <tr>
+      <td><a href="/topics/{{ topic.id }}">{{ topic.title }}</a></td>
+      <td>{{ "%.2f"|format(topic.total_score) }}</td>
+      <td>{{ topic.status }}</td>
+      <td>{{ topic.channel_id }}</td>
+      <td>
+        <form class="inline" method="post" action="/topics/{{ topic.id }}/score">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit">スコア計算</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <fieldset>
+    <legend>手動企画作成</legend>
+    <form method="post" action="/topics">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <label>チャンネル:
+        <select name="channel_id" required>
+          {% for channel in channels %}
+          <option value="{{ channel.id }}">{{ channel.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>タイトル: <input type="text" name="title" required /></label>
+      <label>概要: <input type="text" name="description" /></label>
+      <button type="submit">作成</button>
+    </form>
+  </fieldset>
+
+  <fieldset>
+    <legend>CSVインポート(title, description, source_url)</legend>
+    <form method="post" action="/topics/import">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <label>チャンネル:
+        <select name="channel_id" required>
+          {% for channel in channels %}
+          <option value="{{ channel.id }}">{{ channel.name }}</option>
+          {% endfor %}
+        </select>
+      </label><br />
+      <textarea name="csv_text" rows="6" cols="60" placeholder="title,description,source_url" required></textarea><br />
+      <button type="submit">インポート</button>
+    </form>
+  </fieldset>
+</section>
+{% endblock %}
