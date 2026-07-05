@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}レビュー結果 - {{ project.id }}{% endblock %}
+{% block content %}
+<section>
+  <h2>VideoProject {{ project.id }}</h2>
+  <p>状態: {{ project.status }}</p>
+
+  <h3>レビュー結果</h3>
+  <ul>
+    {% for review in reviews %}
+    <li>
+      <strong>{{ review.reviewer_type }}</strong>
+      (version {{ review.review_version }}) -
+      {% if review.passed %}合格{% else %}不合格{% endif %}
+      (score: {{ review.score }})
+      <ul>
+        {% for finding in review.findings %}
+        <li>[{{ finding.severity }}] {{ finding.code }}: {{ finding.message }}</li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h3>承認</h3>
+  <form method="post" action="/video-projects/{{ project.id }}/approve">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>決裁者: <input type="text" name="decided_by" required /></label>
+    <label>理由: <input type="text" name="reason" /></label>
+    <button type="submit">承認</button>
+  </form>
+
+  <h3>却下</h3>
+  <form method="post" action="/video-projects/{{ project.id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>決裁者: <input type="text" name="decided_by" required /></label>
+    <label>理由: <input type="text" name="reason" /></label>
+    <button type="submit">却下</button>
+  </form>
+</section>
+{% endblock %}

@@ -107,9 +107,36 @@ def _classify_comment(
     return data
 
 
+# content_review用の誇張・断定NGワード(inspector.py DEFAULT_NG_WORDSと同趣旨)。
+_CONTENT_REVIEW_NG_WORDS: tuple[str, ...] = (
+    "絶対に儲かる",
+    "必ず成功",
+    "誰でも稼げる",
+    "確実に稼げる",
+)
+
+
+def _review_content(seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]) -> dict:
+    """`review_content` operation用: 決定的に「問題なし」を返し、NGワードがあれば
+    該当Findingを返す簡易ロジック。
+    """
+    findings = [
+        {
+            "code": "llm_flagged_exaggeration",
+            "severity": "blocking",
+            "message": f"誇張・断定表現の疑いがあります: {word}",
+            "detail": None,
+        }
+        for word in _CONTENT_REVIEW_NG_WORDS
+        if word in user_prompt
+    ]
+    return {"findings": findings, "passed": len(findings) == 0}
+
+
 _GENERATORS: dict[str, Generator] = {
     "generate_script": _generate_script_content,
     "classify_comment": _classify_comment,
+    "review_content": _review_content,
 }
 
 

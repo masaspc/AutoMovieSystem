@@ -102,6 +102,19 @@ class Settings(BaseSettings):
     TOPIC_SCORE_WEIGHT_FRESHNESS: float = 0.10
     TOPIC_SCORE_WEIGHT_PRODUCTION_COST: float = 0.10
 
+    # 機械検査(仕様§12・app/services/reviews/machine.py)の許容範囲。
+    REVIEW_DURATION_MIN_RATIO: float = 0.85
+    REVIEW_DURATION_MAX_RATIO: float = 1.15
+    REVIEW_MIN_WIDTH: int = 1920
+    REVIEW_MIN_HEIGHT: int = 1080
+    REVIEW_SILENCE_THRESHOLD_DB: float = -50.0
+    REVIEW_SILENCE_MIN_DURATION_SECONDS: float = 10.0
+    REVIEW_VOLUME_MIN_DB: float = -30.0
+    REVIEW_VOLUME_MAX_DB: float = -5.0
+
+    # 公開可否ゲート(app/services/reviews/gate.py)の高リスク領域キーワード(カンマ区切り)。
+    REVIEW_HIGH_RISK_KEYWORDS: str = "投資,医療,法律,セキュリティ"
+
     @property
     def resolved_ffmpeg_path(self) -> str:
         return _resolve_binary_path(self.FFMPEG_PATH, "ffmpeg")
@@ -109,6 +122,10 @@ class Settings(BaseSettings):
     @property
     def resolved_ffprobe_path(self) -> str:
         return _resolve_binary_path(self.FFPROBE_PATH, "ffprobe")
+
+    @property
+    def resolved_high_risk_keywords(self) -> tuple[str, ...]:
+        return tuple(k.strip() for k in self.REVIEW_HIGH_RISK_KEYWORDS.split(",") if k.strip())
 
 
 @lru_cache
