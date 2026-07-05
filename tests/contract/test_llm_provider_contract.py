@@ -26,7 +26,9 @@ def _make_anthropic_response(model: str, tool_input: dict[str, Any]) -> httpx.Re
         "content": [{"type": "tool_use", "name": "emit_structured_output", "input": tool_input}],
         "usage": {"input_tokens": 42, "output_tokens": 84},
     }
-    return httpx.Response(200, json=payload, request=httpx.Request("POST", "https://example.invalid"))
+    return httpx.Response(
+        200, json=payload, request=httpx.Request("POST", "https://example.invalid")
+    )
 
 
 def _fake_script_data() -> dict:

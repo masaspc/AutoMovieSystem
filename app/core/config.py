@@ -68,10 +68,19 @@ class Settings(BaseSettings):
 
     GENERATED_DIR: str = "generated"
 
+    # FFmpeg/ffprobe呼び出しのタイムアウト(秒)。
+    MEDIA_FFMPEG_TIMEOUT_SECONDS: float = 300.0
+    MEDIA_FFPROBE_TIMEOUT_SECONDS: float = 30.0
+
     # プロバイダー選択(デフォルトはすべてFake。実APIキー未設定でも全機能デモ可能: D-006)
     LLM_PROVIDER: str = "fake"
     TTS_PROVIDER: str = "fake"
     YOUTUBE_PROVIDER: str = "fake"
+
+    # TTS_PROVIDER=generic_command 時のコマンドテンプレート(引数配列。JSON文字列で指定)。
+    # 例: '["voicevox_cli", "--text", "{text}", "--voice", "{voice}", "--out", "{output}"]'
+    TTS_GENERIC_COMMAND_TEMPLATE: str = ""
+    TTS_GENERIC_COMMAND_TIMEOUT_SECONDS: float = 60.0
 
     # Anthropic LLMプロバイダー設定。APIキー未設定でもFakeで全機能デモ可能(D-006)。
     ANTHROPIC_API_KEY: str = ""

@@ -1,3 +1,4 @@
+from app.models.asset import Asset
 from app.models.budget_ledger import BudgetLedger
 from app.models.channel import Channel
 from app.models.evidence import Evidence
@@ -6,8 +7,10 @@ from app.models.llm_cache import LLMCache
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.usage_record import UsageRecord
+from app.models.video_project import VideoProject
 
 __all__ = [
+    "Asset",
     "BudgetLedger",
     "Channel",
     "Evidence",
@@ -16,4 +19,5 @@ __all__ = [
     "Script",
     "Topic",
     "UsageRecord",
+    "VideoProject",
 ]

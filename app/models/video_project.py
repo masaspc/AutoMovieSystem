@@ -1,0 +1,46 @@
+"""VideoProject モデル(仕様§6)。Topicから生成される動画1本分(世代管理あり)。
+
+`(topic_id, generation)` UNIQUE により1 Topicから複数世代の作り直しに対応する
+(MVPは generation=1 固定運用: D-010/ADR-0004)。`status` は
+`app/services/state_machine.py` の遷移表経由でのみ変更すること。
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+
+ASPECT_RATIOS = ("16:9", "9:16")
+
+
+class VideoProject(Base):
+    __tablename__ = "video_projects"
+    __table_args__ = (
+        UniqueConstraint("topic_id", "generation", name="uq_video_projects_topic_generation"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id"), nullable=False)
+    script_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("scripts.id"), nullable=True
+    )
+
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="TOPIC_CREATED")
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    template_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    aspect_ratio: Mapped[str] = mapped_column(String(8), nullable=False, default="16:9")
+    target_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    output_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )

@@ -19,6 +19,7 @@ dependencies = [
   "structlog>=24.4",
   "cryptography>=43.0",
   "itsdangerous>=2.2",
+  "pillow>=11.0",
 ]
 
 [dependency-groups]
@@ -93,5 +94,6 @@ markers = [
   "integration: requires PostgreSQL/Redis services",
   "e2e: end-to-end dry-run workflow tests",
   "contract: provider Protocol contract tests",
+  "media: requires real ffmpeg/ffprobe binaries",
 ]
 testpaths = ["tests"]

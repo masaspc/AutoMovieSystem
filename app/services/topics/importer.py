@@ -77,9 +77,7 @@ def _normalize_row_hash(title: str, description: str, source_url: str) -> str:
 
     大小文字・前後空白の差異は同一行とみなして重複させないよう正規化する。
     """
-    normalized = "␟".join(
-        part.strip().lower() for part in (title, description, source_url)
-    )
+    normalized = "␟".join(part.strip().lower() for part in (title, description, source_url))
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 

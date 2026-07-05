@@ -12,7 +12,7 @@ celery_app = Celery(
     "auto_movie_system",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.workers.tasks.health", "app.workers.tasks.scripts"],
+    include=["app.workers.tasks.health", "app.workers.tasks.scripts", "app.workers.tasks.media"],
 )
 
 celery_app.conf.update(

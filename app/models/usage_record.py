@@ -13,9 +13,7 @@ from app.db.base import Base
 
 class UsageRecord(Base):
     __tablename__ = "usage_records"
-    __table_args__ = (
-        UniqueConstraint("job_run_id", "seq", name="uq_usage_records_job_run_seq"),
-    )
+    __table_args__ = (UniqueConstraint("job_run_id", "seq", name="uq_usage_records_job_run_seq"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     provider: Mapped[str] = mapped_column(String(64), nullable=False)

@@ -73,9 +73,7 @@ def inspect_script(
             Finding("empty_title_candidates", SEVERITY_BLOCKING, "タイトル候補が空です")
         )
     if not sections:
-        findings.append(
-            Finding("empty_sections", SEVERITY_BLOCKING, "セクション(内容)が空です")
-        )
+        findings.append(Finding("empty_sections", SEVERITY_BLOCKING, "セクション(内容)が空です"))
     if not script.hook:
         findings.append(Finding("empty_hook", SEVERITY_BLOCKING, "hookが空です"))
     if not body.get("promised_outcome"):
