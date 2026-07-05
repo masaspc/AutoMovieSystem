@@ -1,0 +1,164 @@
+# ClaudeCode 引き継ぎメモ
+
+作成日: 2026-07-05
+作成者: Codex
+対象HEAD: `658b685 Phase 5: YouTube投稿(OAuth/冪等アップロード/Fake YouTube/reconcile)`
+
+## 現在の完成度目安
+
+全体完成度は約 76% と見ています。
+
+- Phase -1〜5 は実装・コミット済みの状態から継続。
+- 今回、Phase 6 として「分析指標同期」「コメント同期/分類」「コメント/指標由来Insight」「コメント由来Topic候補生成」「API」「Celeryタスク」を追加。
+- Phase 6 は `TASKS.md` 上で完了扱いに更新済み。
+- Phase 7, Phase 8 は未着手です。
+
+## 今回の主な変更
+
+### 1. 途中実装の安定化
+
+ClaudeCode 停止時点の未コミット差分を壊さない形で、既存の失敗永続化・冪等実行まわりを検証し、足りない部分を補いました。
+
+- `JobRun` の `in_progress`/lease 扱いを前提にしたタスクの失敗永続化を確認。
+- worker タスク失敗時、トランザクション rollback 後にも失敗状態を別セッションで保存する流れを補強。
+- upload 失敗時に `Publication(upload_status="failed", last_error=...)` が残るように補強。
+- API 側で `JobInProgressError` を HTTP 409 にマップ。
+- `Asset.role` 追加とメディアパイプラインのAsset upsert系テストを確認。
+
+関連ファイル:
+
+- `app/services/jobs.py`
+- `app/services/publishing/uploader.py`
+- `app/workers/tasks/media.py`
+- `app/workers/tasks/publishing.py`
+- `app/workers/tasks/reviews.py`
+- `app/workers/tasks/scripts.py`
+- `app/api/publications.py`
+- `app/api/scripts.py`
+- `app/models/asset.py`
+- `migrations/versions/8f38a5e7cce7_add_asset_role_column.py`
+- `tests/unit/test_worker_task_failure_persistence.py`
+- `tests/unit/test_media_pipeline_asset_upsert.py`
+
+### 2. Phase 6 MVP: 分析・コメント・フィードバック
+
+以下を追加しました。
+
+- `VideoMetricDaily`
+  - `publication_id + metric_date` で日次指標を一意化。
+  - views/likes/comments_count を保存。
+- `Comment`
+  - YouTubeコメントIDで一意化。
+  - author はハッシュ保存。
+  - ルールベースでカテゴリ分類。
+- `Insight`
+  - コメント要望などから改善/企画候補を保存。
+  - `source_ref` を持たせ、同一Publication内の複数Insightを安全に重複排除。
+  - `human_review_reason` を保存。
+- Alembic migration
+  - `a1c9d4e5f607_add_metrics_comments_and_insights.py`
+- 分析同期サービス
+  - `sync_video_metrics(...)`
+- コメント同期/分類サービス
+  - `sync_comments(...)`
+  - `classify_text(...)`
+  - `classify_comment(...)`
+  - 取得結果から消えたコメントは `moderation_status="deleted"` に更新。
+- フィードバックInsight生成
+  - `generate_comment_insights(...)`
+  - `generate_metric_insights(...)`
+  - `generate_publication_insights(...)`
+  - 同種の次回企画要望・質問・比較要望は `Insight` と `Topic(source_type="comment")` を作成/更新。
+  - 同一エラー報告は補足候補Insightを作成/更新。
+  - CTR/維持率/登録増/コメント率の基本ルールから改善Insightを作成。
+- Phase 6 API
+  - `GET /api/publications/{id}/metrics`
+  - `POST /api/publications/{id}/sync-metrics`
+  - `GET /api/publications/{id}/comments`
+  - `POST /api/publications/{id}/sync-comments`
+  - `GET /api/publications/{id}/insights`
+  - `POST /api/publications/{id}/generate-insights`
+  - `POST /api/publications/{id}/sync-feedback`
+  - `POST /api/analytics/sync-completed`
+- Phase 6 Celeryタスク
+  - `analytics.sync_metrics`
+  - `analytics.sync_comments`
+  - `analytics.generate_insights`
+  - `analytics.sync_feedback`
+  - `analytics.sync_completed_feedback`
+
+追加ファイル:
+
+- `app/models/video_metric_daily.py`
+- `app/models/comment.py`
+- `app/models/insight.py`
+- `app/services/analytics/__init__.py`
+- `app/services/analytics/sync.py`
+- `app/services/comments/__init__.py`
+- `app/services/comments/classifier.py`
+- `app/services/comments/sync.py`
+- `app/services/feedback/__init__.py`
+- `app/services/feedback/insights.py`
+- `app/services/feedback/sync.py`
+- `app/schemas/analytics.py`
+- `app/api/analytics.py`
+- `app/workers/tasks/analytics.py`
+- `migrations/versions/a1c9d4e5f607_add_metrics_comments_and_insights.py`
+- `tests/unit/test_phase6_sync_and_insights.py`
+- `tests/unit/test_analytics_api.py`
+
+## 検証結果
+
+以下は 2026-07-05 時点で成功済みです。
+
+```powershell
+uv run ruff check .
+# All checks passed!
+```
+
+```powershell
+uv run mypy app
+# Success: no issues found in 106 source files
+```
+
+```powershell
+$tmp = Join-Path $env:TEMP ('automovie-migration-' + [guid]::NewGuid().ToString() + '.db')
+$env:DATABASE_URL = 'sqlite:///' + ($tmp -replace '\\','/')
+uv run alembic upgrade head
+# ce546f0ebda2 -> ... -> 8f38a5e7cce7 -> a1c9d4e5f607 まで成功
+```
+
+```powershell
+uv run pytest -q
+# 240 passed, 1 skipped
+```
+
+警告は残っています。
+
+- `datetime.utcnow()` の deprecation warning が多数。
+- FastAPI/TestClient 経由で Starlette の `httpx` deprecation warning。
+
+今回の作業では既存挙動を優先して警告対応はしていません。
+
+## 注意点
+
+- `HANDOFF_CLAUDECODE.md` を含め、今回の変更は未コミットです。
+- `TASKS.md` の Phase 6 は `[x]` に更新済みです。
+- コメント分類はMVPのルールベースです。LLM分類、スパム/炎上/返信優先度の精緻化は未実装です。
+- 実YouTube Analytics APIの詳細指標ではなく、既存の `YouTubeProvider` 抽象の `get_video_statistics`/`list_comments` と保存済み拡張指標を使ったMVPです。
+- Docker Desktop/compose 実起動検証は未実施です。
+
+## 次にやるとよいこと
+
+1. 現在の未コミット差分を確認して、Phase 5補強分とPhase 6分を適切な粒度でコミット。
+2. Insight生成の仕様精緻化。
+   - 複数トピック候補をどう扱うか。
+   - Topic候補のレビュー/承認フロー。
+3. Phase 7 管理画面。
+   - 投稿状況、承認、分析、コメント、改善候補を見られる画面。
+4. Phase 8 総合検証。
+   - E2E x2。
+   - 冪等性。
+   - セキュリティ。
+   - Docker/compose。
+   - 最終レポート。
