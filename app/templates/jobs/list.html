@@ -1,34 +1,50 @@
 {% extends "base.html" %}
-{% block title %}ジョブ一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}ジョブ一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>ジョブ(JobRun)一覧</h2>
+<div class="page-header">
+  <div>
+    <h2>ジョブ(JobRun)</h2>
+    <p class="page-desc">冪等ジョブの実行履歴。失敗ジョブはここから安全に再実行できます。</p>
+  </div>
+</div>
 
-  <form method="get" action="/jobs">
-    <label>ステータス: <input type="text" name="status" value="{{ status_filter }}" /></label>
-    <label>ジョブ種別: <input type="text" name="job_type" value="{{ job_type_filter }}" /></label>
-    <button type="submit">絞り込み</button>
+<div class="card">
+  <form method="get" action="/jobs" class="form-row">
+    <div class="field" style="margin: 0;">
+      <label>ステータス</label>
+      <input type="text" name="status" value="{{ status_filter }}" placeholder="failed など" />
+    </div>
+    <div class="field" style="margin: 0;">
+      <label>ジョブ種別</label>
+      <input type="text" name="job_type" value="{{ job_type_filter }}" placeholder="render_video など" />
+    </div>
+    <button type="submit" class="btn-secondary">絞り込み</button>
   </form>
+</div>
 
+<div class="table-wrap">
   <table>
-    <tr><th>種別</th><th>対象</th><th>ステータス</th><th>試行回数</th><th>最終エラー</th><th>操作</th></tr>
+    <tr><th>種別</th><th>対象</th><th>ステータス</th><th>試行</th><th>最終エラー</th><th>操作</th></tr>
     {% for job in jobs %}
     <tr>
-      <td>{{ job.job_type }}</td>
-      <td>{{ job.entity_type }}:{{ job.entity_id }}</td>
-      <td>{{ job.status }}</td>
+      <td><strong>{{ job.job_type }}</strong></td>
+      <td class="mono">{{ job.entity_type }}:{{ job.entity_id }}</td>
+      <td>{{ status_badge(job.status) }}</td>
       <td>{{ job.attempt }}</td>
-      <td>{{ job.last_error or "-" }}</td>
+      <td class="muted" style="max-width: 360px;">{{ job.last_error or "—" }}</td>
       <td>
         {% if job.status == "failed" %}
         <form class="inline" method="post" action="/jobs/{{ job.id }}/retry">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button type="submit">再実行</button>
+          <button type="submit" class="btn-secondary btn-sm">再実行</button>
         </form>
         {% endif %}
       </td>
     </tr>
+    {% else %}
+    <tr><td colspan="6"><div class="empty">ジョブ実行履歴はまだありません</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}

@@ -1,61 +1,88 @@
 {% extends "base.html" %}
-{% block title %}企画詳細 - {{ topic.title }}{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}企画詳細 - {{ topic.title }} | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>{{ topic.title }}</h2>
-  <p>{{ topic.description or "(概要なし)" }}</p>
-  <p>ステータス: {{ topic.status }} / 合計スコア: {{ "%.2f"|format(topic.total_score) }}</p>
+<div class="page-header">
+  <div>
+    <h2>{{ topic.title }}</h2>
+    <p class="page-desc">{{ topic.description or "(概要なし)" }}</p>
+  </div>
+  <div class="actions">
+    {{ status_badge(topic.status) }}
+    <form class="inline" method="post" action="/topics/{{ topic.id }}/generate-script">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit">台本生成</button>
+    </form>
+    <form class="inline" method="post" action="/topics/{{ topic.id }}/create-video-project">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn-secondary">動画プロジェクト作成</button>
+    </form>
+  </div>
+</div>
 
-  <h3>スコア内訳</h3>
-  <table>
-    <tr><th>需要</th><th>専門性</th><th>独自性</th><th>収益性</th><th>鮮度</th><th>制作コスト</th><th>リスク</th></tr>
-    <tr>
-      <td>{{ topic.demand_score }}</td>
-      <td>{{ topic.expertise_score }}</td>
-      <td>{{ topic.originality_score }}</td>
-      <td>{{ topic.revenue_score }}</td>
-      <td>{{ topic.freshness_score }}</td>
-      <td>{{ topic.production_cost_score }}</td>
-      <td>{{ topic.risk_level }}</td>
-    </tr>
-  </table>
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">合計スコア</div>
+    <div class="stat-value">{{ "%.2f"|format(topic.total_score) }}</div>
+    <div class="stat-sub">リスク: {{ topic.risk_level }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">需要 / 専門性</div>
+    <div class="stat-value">{{ topic.demand_score }} / {{ topic.expertise_score }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">独自性 / 収益性</div>
+    <div class="stat-value">{{ topic.originality_score }} / {{ topic.revenue_score }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">鮮度 / 制作コスト</div>
+    <div class="stat-value">{{ topic.freshness_score }} / {{ topic.production_cost_score }}</div>
+  </div>
+</div>
 
-  <h3>Evidence一覧</h3>
-  <table>
-    <tr><th>出典</th><th>クレーム</th><th>検証状態</th></tr>
-    {% for evidence in evidence_list %}
-    <tr>
-      <td><a href="{{ evidence.source_url }}">{{ evidence.source_title or evidence.source_url }}</a></td>
-      <td>{{ evidence.claim }}</td>
-      <td>{{ evidence.verification_status }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+{% if video_project %}
+<div class="flash flash-info">
+  関連動画プロジェクト:
+  <a href="/video-projects/{{ video_project.id }}" class="mono">{{ video_project.id }}</a>
+  {{ status_badge(video_project.status) }}
+</div>
+{% endif %}
 
-  <h3>台本(Script)一覧</h3>
-  <table>
-    <tr><th>バージョン</th><th>タイトル</th><th>ステータス</th></tr>
-    {% for script in scripts %}
-    <tr>
-      <td>{{ script.version }}</td>
-      <td>{{ script.title }}</td>
-      <td>{{ script.status }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">Evidence(出典)</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>出典</th><th>クレーム</th><th>検証状態</th></tr>
+        {% for evidence in evidence_list %}
+        <tr>
+          <td><a href="{{ evidence.source_url }}">{{ evidence.source_title or evidence.source_url }}</a></td>
+          <td>{{ evidence.claim }}</td>
+          <td>{{ status_badge(evidence.verification_status) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3"><div class="empty">出典はまだ登録されていません</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
 
-  <form method="post" action="/topics/{{ topic.id }}/generate-script">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button type="submit">台本生成</button>
-  </form>
-
-  <form method="post" action="/topics/{{ topic.id }}/create-video-project">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button type="submit">動画プロジェクト作成</button>
-  </form>
-
-  {% if video_project %}
-  <p>関連動画プロジェクト: <a href="/video-projects/{{ video_project.id }}">{{ video_project.id }}</a>({{ video_project.status }})</p>
-  {% endif %}
-</section>
+  <div class="card">
+    <h3 class="card-title">台本(Script)</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>バージョン</th><th>タイトル</th><th>ステータス</th></tr>
+        {% for script in scripts %}
+        <tr>
+          <td>v{{ script.version }}</td>
+          <td>{{ script.title }}</td>
+          <td>{{ status_badge(script.status) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3"><div class="empty">台本はまだ生成されていません</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
 {% endblock %}

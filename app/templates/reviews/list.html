@@ -1,20 +1,39 @@
 {% extends "base.html" %}
-{% block title %}レビュー一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}レビュー一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>レビュー一覧</h2>
-  <p>合格: {{ passed_count }}件 / 不合格(blocking): {{ blocking_count }}件</p>
+<div class="page-header">
+  <div>
+    <h2>レビュー</h2>
+    <p class="page-desc">機械検査とコンテンツ検査の結果一覧。</p>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">合格</div>
+    <div class="stat-value" style="color: var(--success);">{{ passed_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">不合格(blocking)</div>
+    <div class="stat-value" style="color: var(--danger);">{{ blocking_count }}</div>
+  </div>
+</div>
+
+<div class="table-wrap">
   <table>
     <tr><th>動画プロジェクト</th><th>種別</th><th>バージョン</th><th>合否</th><th>スコア</th></tr>
     {% for review in reviews %}
     <tr>
-      <td><a href="/video-projects/{{ review.video_project_id }}">{{ review.video_project_id }}</a></td>
+      <td><a href="/video-projects/{{ review.video_project_id }}" class="mono">{{ review.video_project_id }}</a></td>
       <td>{{ review.reviewer_type }}</td>
       <td>{{ review.review_version }}</td>
-      <td>{% if review.passed %}合格{% else %}不合格{% endif %}</td>
+      <td>{% if review.passed %}{{ status_badge("合格") }}{% else %}{{ status_badge("不合格") }}{% endif %}</td>
       <td>{{ review.score }}</td>
     </tr>
+    {% else %}
+    <tr><td colspan="5"><div class="empty">レビューはまだありません</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}

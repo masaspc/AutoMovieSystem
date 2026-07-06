@@ -1,61 +1,95 @@
 {% extends "base.html" %}
-{% block title %}ダッシュボード{% endblock %}
+{% from "_macros.html" import status_badge, progress_bar %}
+{% block title %}ダッシュボード | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>ダッシュボード</h2>
+<div class="page-header">
+  <div>
+    <h2>ダッシュボード</h2>
+    <p class="page-desc">チャンネル運用の現在地。企画から投稿・分析までの状態を一覧します。</p>
+  </div>
+</div>
 
-  <h3>企画(Topic)ステータス別件数</h3>
-  <table>
-    <tr><th>ステータス</th><th>件数</th></tr>
-    {% for status, count in topic_counts.items() %}
-    <tr><td>{{ status }}</td><td>{{ count }}</td></tr>
-    {% endfor %}
-  </table>
+{% if daily_ratio >= budget_warning_threshold or monthly_ratio >= budget_warning_threshold %}
+<div class="flash flash-warning">AI予算の消費が80%を超えています。/usage で内訳を確認してください。</div>
+{% endif %}
 
-  <h3>動画プロジェクト ステータス別件数</h3>
-  <table>
-    <tr><th>ステータス</th><th>件数</th></tr>
-    {% for status, count in project_counts.items() %}
-    <tr><td>{{ status }}</td><td>{{ count }}</td></tr>
-    {% endfor %}
-  </table>
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">企画(Topic)</div>
+    <div class="stat-value">{{ topic_counts.values() | sum }}</div>
+    <div class="stat-sub">全ステータス合計</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">動画プロジェクト</div>
+    <div class="stat-value">{{ project_counts.values() | sum }}</div>
+    <div class="stat-sub">全ステータス合計</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">AI費用(今日)</div>
+    <div class="stat-value">${{ "%.4f" | format(today_cost_usd) }}</div>
+    <div class="stat-sub">今月: ${{ "%.4f" | format(month_cost_usd) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">予算消費率(日次)</div>
+    <div class="stat-value" style="font-size: 20px; margin-bottom: 6px;">{{ (daily_ratio * 100) | round(1) }}%</div>
+    {{ progress_bar(daily_ratio) }}
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">予算消費率(月次)</div>
+    <div class="stat-value" style="font-size: 20px; margin-bottom: 6px;">{{ (monthly_ratio * 100) | round(1) }}%</div>
+    {{ progress_bar(monthly_ratio) }}
+  </div>
+</div>
 
-  <h3>直近の投稿</h3>
-  {% if latest_publication %}
-  <p>{{ latest_publication.title }}({{ latest_publication.upload_status }} / {{ latest_publication.youtube_video_id or "未投稿" }})</p>
-  {% else %}
-  <p>投稿はまだありません</p>
-  {% endif %}
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">企画 ステータス別件数</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>ステータス</th><th>件数</th></tr>
+        {% for status, count in topic_counts.items() %}
+        <tr><td>{{ status_badge(status) }}</td><td>{{ count }}</td></tr>
+        {% else %}
+        <tr><td colspan="2"><div class="empty">企画はまだありません</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
 
-  <h3>直近の改善提案(Insight)</h3>
-  {% if latest_insight %}
-  <p>[{{ latest_insight.insight_type }}] {{ latest_insight.finding }}</p>
-  {% else %}
-  <p>Insightはまだありません</p>
-  {% endif %}
+  <div class="card">
+    <h3 class="card-title">動画プロジェクト ステータス別件数</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>ステータス</th><th>件数</th></tr>
+        {% for status, count in project_counts.items() %}
+        <tr><td>{{ status_badge(status) }}</td><td>{{ count }}</td></tr>
+        {% else %}
+        <tr><td colspan="2"><div class="empty">動画プロジェクトはまだありません</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
 
-  <h3>AI費用(USD)</h3>
-  <table>
-    <tr><th>今日</th><td>${{ "%.4f"|format(today_cost_usd) }}</td></tr>
-    <tr><th>今月</th><td>${{ "%.4f"|format(month_cost_usd) }}</td></tr>
-  </table>
+  <div class="card">
+    <h3 class="card-title">直近の投稿</h3>
+    {% if latest_publication %}
+    <p style="margin: 0 0 6px; font-weight: 600;">{{ latest_publication.title }}</p>
+    <p class="muted" style="margin: 0;">
+      {{ status_badge(latest_publication.upload_status) }}
+      <span class="mono">{{ latest_publication.youtube_video_id or "未投稿" }}</span>
+    </p>
+    {% else %}
+    <div class="empty">投稿はまだありません</div>
+    {% endif %}
+  </div>
 
-  <h3>予算消費率</h3>
-  <p>
-    日次:
-    <span class="budget-bar {% if daily_ratio >= budget_warning_threshold %}over-threshold{% endif %}">
-      <span style="width: {{ (daily_ratio * 100) | round(1) }}%"></span>
-    </span>
-    {{ (daily_ratio * 100) | round(1) }}%
-    {% if daily_ratio >= budget_warning_threshold %}<span class="badge-warning">警告: 80%超</span>{% endif %}
-  </p>
-  <p>
-    月次:
-    <span class="budget-bar {% if monthly_ratio >= budget_warning_threshold %}over-threshold{% endif %}">
-      <span style="width: {{ (monthly_ratio * 100) | round(1) }}%"></span>
-    </span>
-    {{ (monthly_ratio * 100) | round(1) }}%
-    {% if monthly_ratio >= budget_warning_threshold %}<span class="badge-warning">警告: 80%超</span>{% endif %}
-  </p>
-</section>
+  <div class="card">
+    <h3 class="card-title">直近の改善提案(Insight)</h3>
+    {% if latest_insight %}
+    <p style="margin: 0;">{{ status_badge(latest_insight.insight_type) }} {{ latest_insight.finding }}</p>
+    {% else %}
+    <div class="empty">Insightはまだありません</div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

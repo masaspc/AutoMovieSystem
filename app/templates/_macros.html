@@ -1,0 +1,29 @@
+{# 共通UIマクロ。ステータス文字列→意味色バッジの対応は全ページこの1箇所に集約する。 #}
+
+{% macro status_badge(value) -%}
+{%- set v = (value if value is not none else '—') | string -%}
+{%- set lv = v | lower -%}
+{%- if 'failed' in lv or 'reject' in lv or '不合格' in lv or 'error' in lv or 'disputed' in lv or 'blocking' in lv -%}
+<span class="badge badge-danger">{{ v }}</span>
+{%- elif 'published' in lv or 'succeeded' in lv or 'completed' in lv or 'approved' in lv or 'uploaded' in lv or '合格' in lv or 'verified' in lv or 'passed' in lv or 'reviewed' in lv or lv == 'scored' -%}
+<span class="badge badge-success">{{ v }}</span>
+{%- elif 'scheduled' in lv or 'progress' in lv or 'started' in lv or 'collecting' in lv or 'ready' in lv or 'rendered' in lv or 'generated' in lv -%}
+<span class="badge badge-info">{{ v }}</span>
+{%- elif 'warn' in lv or 'held' in lv or 'skip' in lv or 'pending' in lv or '保留' in lv -%}
+<span class="badge badge-warning">{{ v }}</span>
+{%- else -%}
+<span class="badge badge-neutral">{{ v }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro progress_bar(ratio) -%}
+{%- set pct = ((ratio or 0) * 100) | round(1) -%}
+{%- set width = pct if pct < 100 else 100 -%}
+{%- if ratio >= 1 -%}{%- set cls = 'danger' -%}
+{%- elif ratio >= 0.8 -%}{%- set cls = 'warning' -%}
+{%- elif ratio >= 0.6 -%}{%- set cls = 'info' -%}
+{%- else -%}{%- set cls = 'success' -%}
+{%- endif -%}
+<span class="progress"><span class="progress-fill progress-{{ cls }}" style="width: {{ width }}%"></span></span>
+<span class="progress-label">{{ pct }}%</span>
+{%- endmacro %}

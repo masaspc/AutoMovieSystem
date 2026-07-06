@@ -1,64 +1,102 @@
 {% extends "base.html" %}
-{% block title %}利用状況{% endblock %}
+{% from "_macros.html" import status_badge, progress_bar %}
+{% block title %}コスト | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>AI利用状況(UsageRecord)</h2>
+<div class="page-header">
+  <div>
+    <h2>コスト(AI利用状況)</h2>
+    <p class="page-desc">UsageRecordと予算台帳。予算80%で警告、100%でAI処理は自動停止します。</p>
+  </div>
+</div>
 
-  <h3>日別費用(マイクロUSD)</h3>
-  <table>
-    <tr><th>日付</th><th>費用(μUSD)</th></tr>
-    {% for day, cost in by_day.items() %}
-    <tr><td>{{ day }}</td><td>{{ cost }}</td></tr>
-    {% endfor %}
-  </table>
+<div class="card">
+  <h3 class="card-title">予算台帳(BudgetLedger)</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>種別</th><th>期間</th><th>予算(μUSD)</th><th>予約</th><th>確定</th><th>消費率</th></tr>
+      {% for ledger in ledgers %}
+      <tr>
+        <td><span class="badge badge-neutral">{{ ledger.period_type }}</span></td>
+        <td><strong>{{ ledger.period_key }}</strong></td>
+        <td>{{ ledger.budget_micro_usd }}</td>
+        <td>{{ ledger.reserved_micro_usd }}</td>
+        <td>{{ ledger.committed_micro_usd }}</td>
+        <td style="min-width: 220px;">
+          {{ progress_bar(ledger_ratios[ledger.id]) }}
+          {% if ledger_ratios[ledger.id] >= budget_warning_threshold %}<span class="badge badge-warning">警告</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="empty">予算台帳はまだありません</div></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
 
-  <h3>operation別費用</h3>
-  <table>
-    <tr><th>operation</th><th>費用(μUSD)</th></tr>
-    {% for operation, cost in by_operation.items() %}
-    <tr><td>{{ operation }}</td><td>{{ cost }}</td></tr>
-    {% endfor %}
-  </table>
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">日別費用(μUSD)</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>日付</th><th>費用</th></tr>
+        {% for day, cost in by_day.items() %}
+        <tr><td>{{ day }}</td><td>{{ cost }}</td></tr>
+        {% else %}
+        <tr><td colspan="2"><div class="empty">記録なし</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
 
-  <h3>モデル別費用</h3>
-  <table>
-    <tr><th>モデル</th><th>費用(μUSD)</th></tr>
-    {% for model, cost in by_model.items() %}
-    <tr><td>{{ model }}</td><td>{{ cost }}</td></tr>
-    {% endfor %}
-  </table>
+  <div>
+    <div class="card">
+      <h3 class="card-title">operation別費用(μUSD)</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>operation</th><th>費用</th></tr>
+          {% for operation, cost in by_operation.items() %}
+          <tr><td>{{ operation }}</td><td>{{ cost }}</td></tr>
+          {% else %}
+          <tr><td colspan="2"><div class="empty">記録なし</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
 
-  <h3>予算台帳(BudgetLedger)</h3>
-  <table>
-    <tr><th>種別</th><th>期間</th><th>予算</th><th>予約</th><th>確定</th><th>消費率</th></tr>
-    {% for ledger in ledgers %}
-    <tr>
-      <td>{{ ledger.period_type }}</td>
-      <td>{{ ledger.period_key }}</td>
-      <td>{{ ledger.budget_micro_usd }}</td>
-      <td>{{ ledger.reserved_micro_usd }}</td>
-      <td>{{ ledger.committed_micro_usd }}</td>
-      <td>
-        {{ (ledger_ratios[ledger.id] * 100) | round(1) }}%
-        {% if ledger_ratios[ledger.id] >= budget_warning_threshold %}<span class="badge-warning">警告</span>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
+    <div class="card">
+      <h3 class="card-title">モデル別費用(μUSD)</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>モデル</th><th>費用</th></tr>
+          {% for model, cost in by_model.items() %}
+          <tr><td class="mono">{{ model }}</td><td>{{ cost }}</td></tr>
+          {% else %}
+          <tr><td colspan="2"><div class="empty">記録なし</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
-  <h3>直近のUsageRecord(最大100件)</h3>
-  <table>
-    <tr><th>日時</th><th>provider</th><th>モデル</th><th>operation</th><th>費用(μUSD)</th><th>成功</th></tr>
-    {% for record in records %}
-    <tr>
-      <td>{{ record.created_at }}</td>
-      <td>{{ record.provider }}</td>
-      <td>{{ record.model }}</td>
-      <td>{{ record.operation }}</td>
-      <td>{{ record.estimated_cost_micro_usd }}</td>
-      <td>{% if record.success %}成功{% else %}失敗{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</section>
+<div class="card">
+  <h3 class="card-title">直近のUsageRecord(最大100件)</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>日時</th><th>provider</th><th>モデル</th><th>operation</th><th>費用(μUSD)</th><th>結果</th></tr>
+      {% for record in records %}
+      <tr>
+        <td class="muted">{{ record.created_at }}</td>
+        <td>{{ record.provider }}</td>
+        <td class="mono">{{ record.model }}</td>
+        <td>{{ record.operation }}</td>
+        <td>{{ record.estimated_cost_micro_usd }}</td>
+        <td>{% if record.success %}<span class="badge badge-success">成功</span>{% else %}<span class="badge badge-danger">失敗</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="empty">UsageRecordはまだありません</div></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
 {% endblock %}

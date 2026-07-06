@@ -1,25 +1,38 @@
 {% extends "base.html" %}
-{% block title %}改善提案一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}改善提案一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>改善提案(Insight)一覧</h2>
+<div class="page-header">
+  <div>
+    <h2>改善提案(Insight)</h2>
+    <p class="page-desc">コメント・指標から生成された企画候補と改善アクション。根拠と信頼度付き。</p>
+  </div>
+</div>
 
-  <form method="get" action="/insights">
-    <label>種別: <input type="text" name="insight_type" value="{{ insight_type_filter }}" /></label>
-    <button type="submit">絞り込み</button>
+<div class="card">
+  <form method="get" action="/insights" class="form-row">
+    <div class="field" style="margin: 0;">
+      <label>種別</label>
+      <input type="text" name="insight_type" value="{{ insight_type_filter }}" />
+    </div>
+    <button type="submit" class="btn-secondary">絞り込み</button>
   </form>
+</div>
 
+<div class="table-wrap">
   <table>
     <tr><th>種別</th><th>内容</th><th>推奨アクション</th><th>根拠</th><th>信頼度</th></tr>
     {% for insight in insights %}
     <tr>
-      <td>{{ insight.insight_type }}</td>
+      <td>{{ status_badge(insight.insight_type) }}</td>
       <td>{{ insight.finding }}</td>
       <td>{{ insight.recommended_action }}</td>
-      <td>{{ insight.evidence }}</td>
-      <td>{{ insight.confidence }}</td>
+      <td class="muted">{{ insight.evidence }}</td>
+      <td><strong>{{ insight.confidence }}</strong></td>
     </tr>
+    {% else %}
+    <tr><td colspan="5"><div class="empty">Insightはまだありません</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}
