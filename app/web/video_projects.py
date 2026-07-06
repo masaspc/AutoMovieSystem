@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
 from app.core.config import get_settings
-from app.core.csrf import issue_csrf_token, set_csrf_cookie
+from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.core.paths import resolve_generated_path
 from app.db.session import get_db
@@ -163,7 +163,7 @@ def video_project_detail(video_project_id: str, request: Request, db: DbSession)
     )
     next_action = _next_pipeline_action(db, project)
 
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.csrf import issue_csrf_token, set_csrf_cookie
+from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.publication import Publication
@@ -36,7 +36,7 @@ def list_publications(
         query = query.filter(Publication.upload_status == upload_status)
     publications = query.order_by(Publication.created_at.desc()).all()
 
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,

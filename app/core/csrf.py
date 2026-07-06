@@ -53,6 +53,24 @@ def issue_csrf_token() -> str:
     return _serializer().dumps({"v": 1})
 
 
+def get_or_issue_csrf_token(request: object) -> str:
+    """リクエストのCookieに有効なCSRFトークンがあればそれを再利用し、なければ新規発行する。
+
+    ページ表示のたびに新トークンでCookieを上書きすると、複数タブや「戻る」で表示された
+    キャッシュ済みページのフォームトークンとCookieが食い違い、正当な操作が
+    "CSRF token invalid" になる。トークンをブラウザセッション内で安定させることで防ぐ。
+    """
+    cookie_value = request.cookies.get(CSRF_COOKIE_NAME)  # type: ignore[attr-defined]
+    if cookie_value:
+        try:
+            _serializer().loads(cookie_value, max_age=CSRF_MAX_AGE_SECONDS)
+        except (BadSignature, SignatureExpired):
+            pass
+        else:
+            return str(cookie_value)
+    return issue_csrf_token()
+
+
 def verify_csrf(cookie_value: str | None, form_value: str | None) -> bool:
     """CookieとフォームのCSRFトークンが一致し、かつ署名が有効であることを検証する。"""
     if not cookie_value or not form_value or cookie_value != form_value:

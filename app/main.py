@@ -43,6 +43,16 @@ def create_app() -> FastAPI:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    @app.middleware("http")
+    async def no_store_html(request, call_next):  # type: ignore[no-untyped-def]
+        # 認証済み管理画面HTMLのブラウザキャッシュを禁止する。「戻る」で古いページが
+        # 表示されCSRFトークンや状態表示が食い違う問題を防ぐ(静的ファイル・動画は対象外)。
+        response = await call_next(request)
+        content_type = response.headers.get("content-type", "")
+        if content_type.startswith("text/html"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     # 管理画面/API全体にHTTP Basic認証を適用する(D-019)。/health は除外(監視用)。
     admin_dependency = [Depends(require_admin)]
     app.include_router(web_router, dependencies=admin_dependency)
