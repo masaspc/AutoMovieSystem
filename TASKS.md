@@ -37,6 +37,19 @@
       ジョブ追加、脆弱性0件確認)。unit 24件追加、計264件パス(既存253件超過)。ruff/mypyクリーン。
 - [ ] Phase 8: 総合検証
 
+## Phase 8 総合検証結果(2026-07-06)
+
+- 静的検査: ruff / ruff format / mypy(119ファイル)クリーン
+- テスト: unit 248 / contract 8 / media(実FFmpeg)5 / e2e 3 ×2回 = 264 passed
+- E2E冪等性: 同一入力2回実行で VideoProject/Publication/Comment/UsageRecord 重複ゼロ
+- demo: 全Fakeで企画→実MP4(1920x1080 H.264)→レビュー→承認→投稿→分析→Insight→派生企画まで完走
+- Docker compose: 5サービス(app/worker/beat/postgres16/redis7)実起動、コンテナ内 alembic head 適用、
+  /health 200、/dashboard 無認証401→Basic認証200、PostgreSQL統合テスト passed
+- セキュリティ監査(security-reviewer/Opus): BLOCKER 0 / HIGH 1 → HIGH+MEDIUM 3件+LOW 2件を即日修正
+  (gitignore client_secret / last_errorマスキング / DSNマスキング / CSRF Cookie secure / CSRF鍵fail-fast / upload操作者の認証化)
+- pip-audit: 既知脆弱性 0件
+- git履歴シークレットスキャン: 混入なし(.env は管理外)
+
 ## 未解決事項
 
 - Docker Desktop 初回起動中(GUI初期化待ち。docker CLI が PATH 未反映。compose 検証は Phase 8)

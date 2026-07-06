@@ -84,7 +84,9 @@ def test_development_without_password_bypasses_auth(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    # delenv だと開発者ローカルの .env の値へフォールバックしてしまうため、
+    # 「未設定」は空文字で表現する(auth.py は falsy 判定)。
+    monkeypatch.setenv("ADMIN_PASSWORD", "")
     get_settings.cache_clear()
 
     with _client_for(db_session) as client:

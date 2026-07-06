@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin
 from app.core.config import get_settings
-from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token
+from app.core.csrf import issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.core.paths import resolve_generated_path
 from app.db.session import get_db
@@ -185,7 +186,7 @@ def video_project_detail(video_project_id: str, request: Request, db: DbSession)
             "csrf_token": csrf_token,
         },
     )
-    response.set_cookie(CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict")
+    set_csrf_cookie(response, csrf_token)
     return response
 
 
@@ -290,7 +291,7 @@ async def pipeline_upload(
     request: Request,
     db: DbSession,
     csrf_token: Annotated[str, Form()],
-    operator: Annotated[str, Form()] = "admin",
+    operator: Annotated[str, Depends(require_admin)],
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
     try:

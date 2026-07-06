@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, mask_secrets_in_text
 from app.models.job_run import JobRun
 
 logger = get_logger(__name__)
@@ -156,8 +156,8 @@ def run_idempotent[T](
     except Exception as exc:
         job_run.status = "failed"
         job_run.finished_at = datetime.utcnow()
-        # シークレットを含めないよう、例外メッセージのみを切り詰めて保存する。
-        job_run.last_error = str(exc)[:_MAX_ERROR_LENGTH]
+        # シークレットを含めないよう、マスキングした例外メッセージのみを切り詰めて保存する。
+        job_run.last_error = mask_secrets_in_text(str(exc))[:_MAX_ERROR_LENGTH]
         session.flush()
         # D-017: 呼び出し元がこの後 rollback すると上記の記録は消える。Celeryタスク
         # ラッパーが新規セッションで再永続化できるよう、idempotency_keyを例外に付与する。
@@ -264,7 +264,7 @@ async def run_idempotent_async[T](
     except Exception as exc:
         job_run.status = "failed"
         job_run.finished_at = datetime.utcnow()
-        job_run.last_error = str(exc)[:_MAX_ERROR_LENGTH]
+        job_run.last_error = mask_secrets_in_text(str(exc))[:_MAX_ERROR_LENGTH]
         session.flush()
         exc.idempotency_key = idempotency_key  # type: ignore[attr-defined]
         logger.error(
@@ -323,7 +323,7 @@ def record_failure_in_new_session(
             job_run.status = "failed"
 
         job_run.finished_at = datetime.utcnow()
-        job_run.last_error = str(error)[:_MAX_ERROR_LENGTH]
+        job_run.last_error = mask_secrets_in_text(str(error))[:_MAX_ERROR_LENGTH]
         if trace_id is not None:
             job_run.trace_id = trace_id
         new_session.commit()

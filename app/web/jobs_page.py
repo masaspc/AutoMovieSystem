@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token
+from app.core.csrf import issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.job_run import JobRun
@@ -96,7 +96,7 @@ def list_jobs(
             "csrf_token": csrf_token,
         },
     )
-    response.set_cookie(CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict")
+    set_csrf_cookie(response, csrf_token)
     return response
 
 

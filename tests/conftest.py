@@ -13,6 +13,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 # HTTP Basic認証(app.core.auth)はADMIN_PASSWORD未設定時、APP_ENVがdevelopment/testの
 # 場合のみスキップする。既存テストへの影響を避けるため明示的にtestへ固定する。
 os.environ.setdefault("APP_ENV", "test")
+# 開発者ローカルの .env(compose用の ADMIN_PASSWORD / CELERY_TASK_ALWAYS_EAGER=false 等)が
+# pydantic-settings 経由でテストへ漏れないよう、環境変数として明示上書きする
+# (環境変数は .env より優先される)。CIが設定した値は個別テスト側の想定と一致させる。
+os.environ["ADMIN_PASSWORD"] = ""
+os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 
 import app.models  # noqa: F401  metadataにモデルを登録するため import
 from app.core.config import get_settings

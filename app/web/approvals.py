@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
-from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token, verify_csrf
+from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token, set_csrf_cookie, verify_csrf
 from app.db.session import get_db
 from app.models.review import Review
 from app.models.video_project import VideoProject
@@ -62,7 +62,7 @@ def show_review(
             "operator": admin_user,
         },
     )
-    response.set_cookie(CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict")
+    set_csrf_cookie(response, csrf_token)
     return response
 
 

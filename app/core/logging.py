@@ -20,6 +20,10 @@ _SENSITIVE_VALUE_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{8,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._-]{8,}", re.IGNORECASE),
     re.compile(r"ya29\.[A-Za-z0-9_-]{8,}"),  # Google OAuth access token prefix
+    re.compile(r"AKIA[0-9A-Z]{12,}"),
+    re.compile(r"ghp_[A-Za-z0-9]{20,}"),
+    # DSN内の認証情報(例: postgresql://user:pass@host)。user:pass部分のみマスク。
+    re.compile(r"(?<=://)[^:/@\s]+:[^@\s]+(?=@)"),
 ]
 
 _MASK = "***"

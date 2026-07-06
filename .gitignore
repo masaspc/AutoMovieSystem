@@ -32,3 +32,4 @@ Thumbs.db
 # DB
 *.sqlite3
 *.db
+client_secret*.json
