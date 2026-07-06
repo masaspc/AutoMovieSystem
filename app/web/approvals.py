@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin
 from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token, verify_csrf
 from app.db.session import get_db
 from app.models.review import Review
@@ -18,6 +19,7 @@ from app.services.state_machine import InvalidTransitionError
 router = APIRouter(tags=["web-approvals"])
 
 DbSession = Annotated[Session, Depends(get_db)]
+AdminUser = Annotated[str, Depends(require_admin)]
 
 
 def _latest_reviews(session: Session, video_project_id: str) -> list[Review]:
@@ -39,7 +41,9 @@ def _latest_reviews(session: Session, video_project_id: str) -> list[Review]:
 
 
 @router.get("/video-projects/{video_project_id}/review", response_class=HTMLResponse)
-def show_review(video_project_id: str, request: Request, db: DbSession) -> HTMLResponse:
+def show_review(
+    video_project_id: str, request: Request, db: DbSession, admin_user: AdminUser
+) -> HTMLResponse:
     project = db.get(VideoProject, video_project_id)
     if project is None:
         raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
@@ -51,7 +55,12 @@ def show_review(video_project_id: str, request: Request, db: DbSession) -> HTMLR
     response = templates.TemplateResponse(
         request,
         "reviews/review_detail.html",
-        {"project": project, "reviews": reviews, "csrf_token": csrf_token},
+        {
+            "project": project,
+            "reviews": reviews,
+            "csrf_token": csrf_token,
+            "operator": admin_user,
+        },
     )
     response.set_cookie(CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict")
     return response
@@ -70,8 +79,8 @@ def approve_video_project(
     video_project_id: str,
     request: Request,
     db: DbSession,
+    admin_user: AdminUser,
     csrf_token: Annotated[str, Form()],
-    decided_by: Annotated[str, Form()],
     reason: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
@@ -80,7 +89,7 @@ def approve_video_project(
 
     try:
         approval.approve(
-            db, video_project_id=video_project_id, decided_by=decided_by, reason=reason
+            db, video_project_id=video_project_id, decided_by=admin_user, reason=reason
         )
     except (approval.VideoProjectNotFoundError, InvalidTransitionError) as exc:
         db.rollback()
@@ -94,8 +103,8 @@ def reject_video_project(
     video_project_id: str,
     request: Request,
     db: DbSession,
+    admin_user: AdminUser,
     csrf_token: Annotated[str, Form()],
-    decided_by: Annotated[str, Form()],
     reason: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
@@ -103,7 +112,7 @@ def reject_video_project(
         raise HTTPException(status_code=403, detail="CSRF token invalid")
 
     try:
-        approval.reject(db, video_project_id=video_project_id, decided_by=decided_by, reason=reason)
+        approval.reject(db, video_project_id=video_project_id, decided_by=admin_user, reason=reason)
     except (approval.VideoProjectNotFoundError, InvalidTransitionError) as exc:
         db.rollback()
         _handle_transition_errors(exc)

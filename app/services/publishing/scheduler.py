@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -111,3 +111,56 @@ async def schedule_publication(
 
     logger.info("schedule_publication_succeeded", publication_id=publication_id)
     return ScheduleResult(scheduled=True, reasons=[], publication=publication)
+
+
+def finalize_due_publications(session: Session, *, now: datetime | None = None) -> int:
+    """公開期日到来のPublicationを確定させる(修正5)。
+
+    `scheduled_at <= now(UTC)` かつ `published_at IS NULL` かつ
+    `upload_status == "completed"` のPublicationについて `published_at` を設定し、
+    対応する VideoProject が `SCHEDULED` であれば状態遷移表経由で
+    `PUBLISHED` -> `METRICS_COLLECTING` へ進める。`published_at IS NULL` を条件に
+    含めるため、同じPublicationを再度確定させることはない(二重更新なし)。
+
+    戻り値は確定件数。
+    """
+    current_time = now or datetime.now(UTC)
+    # SQLite/PostgreSQL双方の DateTime(naive) 列と比較するためnaive化する(UTC前提)。
+    naive_now = (
+        current_time.replace(tzinfo=None) if current_time.tzinfo is not None else current_time
+    )
+
+    due_publications = (
+        session.query(Publication)
+        .filter(
+            Publication.scheduled_at.isnot(None),
+            Publication.scheduled_at <= naive_now,
+            Publication.published_at.is_(None),
+            Publication.upload_status == "completed",
+        )
+        .all()
+    )
+
+    finalized_count = 0
+    for publication in due_publications:
+        publication.published_at = naive_now
+
+        project = session.get(VideoProject, publication.video_project_id)
+        if project is not None and project.status == "SCHEDULED":
+            try:
+                transition(project, "PUBLISHED")
+                transition(project, "METRICS_COLLECTING")
+            except InvalidTransitionError as exc:
+                logger.info(
+                    "finalize_due_publication_transition_skipped",
+                    publication_id=publication.id,
+                    video_project_id=project.id,
+                    current_state=project.status,
+                    error=str(exc),
+                )
+
+        finalized_count += 1
+        logger.info("finalize_due_publication_succeeded", publication_id=publication.id)
+
+    session.flush()
+    return finalized_count

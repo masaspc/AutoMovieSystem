@@ -38,7 +38,7 @@ demo:
 
 security-check:
 	uv run pip check
-	@echo "TODO: add pip-audit once dependency scanning is wired up"
+	uv run pip-audit
 
 clean-generated:
 	uv run python -c "import shutil; from pathlib import Path; p = Path('generated'); shutil.rmtree(p, ignore_errors=True); p.mkdir(exist_ok=True)"

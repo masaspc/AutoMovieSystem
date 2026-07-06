@@ -22,10 +22,11 @@
     {% endfor %}
   </ul>
 
+  <p>操作者: {{ operator }}</p>
+
   <h3>承認</h3>
   <form method="post" action="/video-projects/{{ project.id }}/approve">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>決裁者: <input type="text" name="decided_by" required /></label>
     <label>理由: <input type="text" name="reason" /></label>
     <button type="submit">承認</button>
   </form>
@@ -33,7 +34,6 @@
   <h3>却下</h3>
   <form method="post" action="/video-projects/{{ project.id }}/reject">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>決裁者: <input type="text" name="decided_by" required /></label>
     <label>理由: <input type="text" name="reason" /></label>
     <button type="submit">却下</button>
   </form>

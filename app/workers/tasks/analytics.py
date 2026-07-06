@@ -13,6 +13,7 @@ from app.services.feedback.sync import (
     sync_all_completed_publications_feedback,
     sync_publication_feedback,
 )
+from app.services.publishing.scheduler import finalize_due_publications
 from app.workers.celery_app import celery_app
 
 
@@ -91,13 +92,34 @@ def sync_feedback_task(publication_id: str) -> dict[str, int | str]:
 
 @celery_app.task(name="analytics.sync_completed_feedback")
 def sync_completed_feedback_task() -> int:
-    """アップロード完了済みPublicationをまとめてPhase 6同期する。"""
+    """アップロード完了済みPublicationをまとめてPhase 6同期する。
+
+    先頭で公開期日到来分の確定処理(修正5)を行ってから同期する。
+    """
     session = SessionLocal()
     try:
+        finalize_due_publications(session)
+        session.commit()
+
         provider = get_youtube_provider()
         results = asyncio.run(sync_all_completed_publications_feedback(session, provider=provider))
         session.commit()
         return len(results)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@celery_app.task(name="analytics.finalize_due_publications")
+def finalize_due_publications_task() -> int:
+    """公開期日到来のPublicationを確定させる単独タスク(修正5・15分毎beat)。"""
+    session = SessionLocal()
+    try:
+        finalized_count = finalize_due_publications(session)
+        session.commit()
+        return finalized_count
     except Exception:
         session.rollback()
         raise

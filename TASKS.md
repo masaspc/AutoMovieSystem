@@ -24,6 +24,17 @@
       API(同期・一覧取得) + Celeryタスク(単体/一括同期)。unit/API 9件追加、計240件パス。
       alembic upgrade head・ruff・mypy クリーン
 - [x] Phase 7: 管理画面 + 運用ドキュメント — 7A: 管理画面 12ページ構築(dashboard/topics/video-projects/reviews/approvals/publications/comments/insights/jobs/usage/settings/health)、CSRF保護・監査ログ。7B: demo・E2Eテスト・全フロー完走検証。ドキュメント整備: README.md / docs/setup.md / docs/operations.md / docs/security.md / docs/content-policy.md / docs/cost-control.md/.env.example / TASKS.md更新。unit/API 240件+e2e全フロー検証パス。
+      7C: 外部レビュー指摘6件対応(D-019) — ①`app/core/auth.py`(HTTP Basic認証、
+      ADMIN_PASSWORD未設定時はAPP_ENV=development/testのみバイパス・それ以外401)を
+      web/api全ルーターへ適用(/healthのみ除外)。②承認/却下の`decided_by`を
+      フォーム入力から認証ユーザーへ変更(review_detail.htmlから入力欄削除、
+      操作者を画面表示)。③`/publications`に公開予約フォーム実装
+      (POST /publications/{id}/schedule、ゲート拒否時はフラッシュ表示・500にしない)。
+      ④`scripts/demo.py`はDEMO_USE_CURRENT_DB=1明示時のみ既存DATABASE_URLを尊重し、
+      それ以外は常にdemo.dbへ強制上書き(接続先DBをマスク表示)。⑤`finalize_due_publications`
+      (published_at確定+PUBLISHED→METRICS_COLLECTING遷移、二重更新なし)をscheduler.pyへ追加し
+      Celery beatへ15分毎タスク登録。⑥pip-audit導入(security-check組み込み、CI security
+      ジョブ追加、脆弱性0件確認)。unit 24件追加、計264件パス(既存253件超過)。ruff/mypyクリーン。
 - [ ] Phase 8: 総合検証
 
 ## 未解決事項
@@ -42,6 +53,10 @@
   テストを壊さないため)。将来 gate.py を6条件対応の非同期APIへ統合するかは要検討
 - RealYouTubeProvider は呼び出しごとに DB から最新の OAuthToken を読み込みリフレッシュする
   (キャッシュしない)。トークンローテーション頻度が高い場合は性能要件を見て見直す
+- HTTP Basic認証(D-019)はMVP相当の最小実装。ユーザー管理・ロールベース権限・
+  レート制限/ブルートフォース対策は未実装(本番運用前にリバースプロキシ側TLS必須+
+  必要なら多要素化を検討)。ADMIN_PASSWORD は平文設定のため secrets manager 等への
+  移行は将来対応
 
 ## 完了条件
 

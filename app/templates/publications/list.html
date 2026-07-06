@@ -8,7 +8,7 @@
     <button type="submit">絞り込み</button>
   </form>
   <table>
-    <tr><th>タイトル</th><th>アップロード状態</th><th>YouTube動画ID</th><th>公開範囲</th><th>公開予約</th></tr>
+    <tr><th>タイトル</th><th>アップロード状態</th><th>YouTube動画ID</th><th>公開範囲</th><th>公開予約</th><th>操作</th></tr>
     {% for publication in publications %}
     <tr>
       <td><a href="/video-projects/{{ publication.video_project_id }}">{{ publication.title }}</a></td>
@@ -16,6 +16,13 @@
       <td>{{ publication.youtube_video_id or "未発行" }}</td>
       <td>{{ publication.privacy_status }}</td>
       <td>{{ publication.scheduled_at or "-" }}</td>
+      <td>
+        <form class="inline" method="post" action="/publications/{{ publication.id }}/schedule">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <label>公開予約日時: <input type="datetime-local" name="scheduled_at" /></label>
+          <button type="submit">公開予約(空なら即時)</button>
+        </form>
+      </td>
     </tr>
     {% endfor %}
   </table>

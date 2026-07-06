@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     APP_ENV: str = "development"
 
+    # 管理画面/API全体のHTTP Basic認証(D-019)。ADMIN_PASSWORD未設定時は
+    # APP_ENV が development/test の場合のみ認証をスキップする(それ以外はfail-closedで401)。
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""
+
     DATABASE_URL: str = "sqlite:///./local.db"
     REDIS_URL: str = "redis://localhost:6379/0"
 

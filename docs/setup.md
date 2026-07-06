@@ -108,6 +108,10 @@ SECRET_ENCRYPTION_KEY=
 
 保存。これで `make demo` / `./scripts/dev.ps1 demo` で全フロー実行可能。
 
+`APP_ENV=development`のままなら管理画面/APIへのHTTP Basic認証(D-019)は
+`ADMIN_PASSWORD`未設定でもバイパスされる。本番相当の`APP_ENV`にする場合は
+`ADMIN_USERNAME`/`ADMIN_PASSWORD`を必ず設定すること(未設定は常に401)。
+
 ## Step 4: SECRET_ENCRYPTION_KEY の生成(推奨・必須)
 
 Fernet 対称鍵を生成:

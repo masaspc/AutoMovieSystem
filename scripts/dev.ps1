@@ -59,7 +59,7 @@ switch ($Target) {
     }
     "security-check" {
         Invoke-Checked @("uv", "run", "pip", "check")
-        Write-Host "TODO: add pip-audit once dependency scanning is wired up"
+        Invoke-Checked @("uv", "run", "pip-audit")
     }
     "clean-generated" {
         Invoke-Checked @(

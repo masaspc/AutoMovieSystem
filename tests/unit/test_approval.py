@@ -92,7 +92,7 @@ def test_web_get_review_sets_csrf_cookie_and_post_without_token_is_forbidden(
 
     post_response = client.post(
         f"/video-projects/{project.id}/approve",
-        data={"decided_by": "reviewer", "csrf_token": "invalid-token"},
+        data={"csrf_token": "invalid-token"},
     )
     assert post_response.status_code == 403
 
@@ -108,7 +108,7 @@ def test_web_approve_with_valid_csrf_token_succeeds(
 
     post_response = client.post(
         f"/video-projects/{project.id}/approve",
-        data={"decided_by": "reviewer", "csrf_token": csrf_token},
+        data={"csrf_token": csrf_token},
         follow_redirects=False,
     )
     assert post_response.status_code == 303
@@ -116,6 +116,9 @@ def test_web_approve_with_valid_csrf_token_succeeds(
     refreshed = db_session.get(VideoProject, project.id)
     assert refreshed is not None
     assert refreshed.status == "UPLOAD_READY"
+
+    recorded = db_session.query(Approval).filter(Approval.video_project_id == project.id).one()
+    assert recorded.decided_by == "dev-anonymous"
 
 
 def test_web_reject_with_valid_csrf_token_succeeds(client: TestClient, db_session: Session) -> None:
@@ -127,7 +130,7 @@ def test_web_reject_with_valid_csrf_token_succeeds(client: TestClient, db_sessio
 
     post_response = client.post(
         f"/video-projects/{project.id}/reject",
-        data={"decided_by": "reviewer", "csrf_token": csrf_token},
+        data={"csrf_token": csrf_token},
         follow_redirects=False,
     )
     assert post_response.status_code == 303
@@ -135,3 +138,6 @@ def test_web_reject_with_valid_csrf_token_succeeds(client: TestClient, db_sessio
     refreshed = db_session.get(VideoProject, project.id)
     assert refreshed is not None
     assert refreshed.status == "REJECTED"
+
+    recorded = db_session.query(Approval).filter(Approval.video_project_id == project.id).one()
+    assert recorded.decided_by == "dev-anonymous"

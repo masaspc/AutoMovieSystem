@@ -1,25 +1,55 @@
 """ローカルデモスクリプト(Phase 7B)。
 
-引数なしで実行可能。SQLite(既存 `DATABASE_URL` を尊重。未設定時は `sqlite:///./demo.db`)
-+ Celery eager + 全Fakeプロバイダー(環境変数上書きではなく、明示的にFake実装を構築)で
+引数なしで実行可能。既定では運用DBを汚染しないよう `DATABASE_URL` を
+`sqlite:///./demo.db` へ強制上書きする(修正4)。既存の(.env含む)`DATABASE_URL` を
+尊重したい場合のみ環境変数 `DEMO_USE_CURRENT_DB=1` を明示すること。
+Celery eager + 全Fakeプロバイダー(環境変数上書きではなく、明示的にFake実装を構築)で
 企画(Topic)スコアリングからInsight生成までの全工程を1回実行し、結果サマリーを表示する。
 
 使い方:
     uv run python scripts/demo.py
+    DEMO_USE_CURRENT_DB=1 uv run python scripts/demo.py  # 既存DATABASE_URLを尊重する場合
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 
+_DEMO_DEFAULT_DATABASE_URL = "sqlite:///./demo.db"
+
 # `DATABASE_URL`/`CELERY_TASK_ALWAYS_EAGER` は import前に設定する(app.core.config.get_settings
-# はプロセス内でキャッシュされるため)。既存の環境変数(既存DATABASE_URL)を尊重し、
-# 未設定の場合のみデフォルトを補う。
-os.environ.setdefault("DATABASE_URL", "sqlite:///./demo.db")
+# はプロセス内でキャッシュされるため)。DEMO_USE_CURRENT_DB=1 が明示されている場合のみ
+# 既存の環境変数(.env含む)を尊重する。それ以外は運用DB誤汚染を防ぐため常に
+# demo.db へ強制上書きする(修正4)。
+_use_current_db = os.environ.get("DEMO_USE_CURRENT_DB") == "1"
+if not _use_current_db:
+    # 明示指定がない限り、.env含む既存のDATABASE_URLより常に優先して上書きする
+    # (pydantic-settingsは環境変数を.envより優先するため、この上書きは確実に効く)。
+    os.environ["DATABASE_URL"] = _DEMO_DEFAULT_DATABASE_URL
+os.environ.setdefault("DATABASE_URL", _DEMO_DEFAULT_DATABASE_URL)
 os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "true")
+
+
+def _mask_database_url(url: str) -> str:
+    """接続文字列内の認証情報(user:password@)をマスクする(シークレットをログに出さない)。"""
+    return re.sub(r"//([^:/@]+):([^@/]+)@", r"//\1:***@", url)
+
+
+def _print_database_url_banner() -> None:
+    resolved_url = os.environ.get("DATABASE_URL", _DEMO_DEFAULT_DATABASE_URL)
+    print(f"接続先DB: {_mask_database_url(resolved_url)}")
+    if _use_current_db:
+        print("DEMO_USE_CURRENT_DB=1 が指定されたため、既存のDATABASE_URL(.env含む)を使用します。")
+    else:
+        print(
+            f"DATABASE_URLを {_mask_database_url(resolved_url)} へ強制上書きしました"
+            "(運用DB誤汚染防止。既存DBを使う場合はDEMO_USE_CURRENT_DB=1を指定してください)。"
+        )
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -105,6 +135,7 @@ def _print_summary(session: Session, report: object) -> None:
 
 
 def main() -> None:
+    _print_database_url_banner()
     _migrate_schema()
 
     from app.db.session import SessionLocal

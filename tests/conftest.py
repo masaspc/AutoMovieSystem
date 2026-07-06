@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# HTTP Basic認証(app.core.auth)はADMIN_PASSWORD未設定時、APP_ENVがdevelopment/testの
+# 場合のみスキップする。既存テストへの影響を避けるため明示的にtestへ固定する。
+os.environ.setdefault("APP_ENV", "test")
 
 import app.models  # noqa: F401  metadataにモデルを登録するため import
 from app.core.config import get_settings

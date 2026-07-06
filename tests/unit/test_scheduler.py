@@ -197,3 +197,64 @@ def test_schedule_missing_publication_raises(db_session: Session) -> None:
                 provider=provider,
             )
         )
+
+
+def test_finalize_due_publications_returns_zero_before_due_date(
+    db_session: Session, tmp_path: Path
+) -> None:
+    project, publication, provider = _make_uploaded_publication(db_session, tmp_path)
+    result = asyncio.run(
+        scheduler.schedule_publication(
+            db_session,
+            publication_id=publication.id,
+            publish_at=datetime(2099, 1, 1, tzinfo=UTC),
+            provider=provider,
+        )
+    )
+    db_session.commit()
+    assert result.scheduled is True
+
+    finalized_count = scheduler.finalize_due_publications(
+        db_session, now=datetime(2026, 8, 1, tzinfo=UTC)
+    )
+    db_session.commit()
+
+    assert finalized_count == 0
+    refreshed_publication = db_session.get(Publication, publication.id)
+    assert refreshed_publication.published_at is None
+    refreshed_project = db_session.get(VideoProject, project.id)
+    assert refreshed_project.status == "SCHEDULED"
+
+
+def test_finalize_due_publications_sets_published_at_and_transitions_state(
+    db_session: Session, tmp_path: Path
+) -> None:
+    project, publication, provider = _make_uploaded_publication(db_session, tmp_path)
+    publish_at = datetime(2026, 1, 1, tzinfo=UTC)
+    result = asyncio.run(
+        scheduler.schedule_publication(
+            db_session,
+            publication_id=publication.id,
+            publish_at=publish_at,
+            provider=provider,
+        )
+    )
+    db_session.commit()
+    assert result.scheduled is True
+
+    now = datetime(2026, 8, 1, tzinfo=UTC)
+    finalized_count = scheduler.finalize_due_publications(db_session, now=now)
+    db_session.commit()
+
+    assert finalized_count == 1
+    refreshed_publication = db_session.get(Publication, publication.id)
+    assert refreshed_publication.published_at == now.replace(tzinfo=None)
+    refreshed_project = db_session.get(VideoProject, project.id)
+    assert refreshed_project.status == "METRICS_COLLECTING"
+
+    # 2回目実行では対象外(published_at IS NULL条件を満たさない)。二重更新なし。
+    second_run_count = scheduler.finalize_due_publications(db_session, now=now)
+    db_session.commit()
+    assert second_run_count == 0
+    refreshed_publication_again = db_session.get(Publication, publication.id)
+    assert refreshed_publication_again.published_at == now.replace(tzinfo=None)

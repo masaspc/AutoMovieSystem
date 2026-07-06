@@ -233,9 +233,8 @@ server {
 
 ### 管理画面
 
-- [ ] 管理画面認証(現状未実装。本番は必須)
-  > **重要**: Phase 7B では管理画面に認証がない。本番運用時は OAuth 2.0 / Basic Auth 等を追加。
-  
+- [ ] `ADMIN_USERNAME` / `ADMIN_PASSWORD` を本番用の強力な値へ設定(D-019: HTTP Basic認証。
+  未設定かつ `APP_ENV` が development/test 以外なら fail-closed で全リクエスト401になる)
 - [ ] CSRF トークン全フォーム検証済み
 
 ### DB
@@ -282,12 +281,14 @@ server {
 
 ### 管理画面認証
 
-**現状**: 未実装。ローカル開発のみ対応。
+**現状**: `app/core/auth.py` の `require_admin` dependency により、web/api 全ルーター
+(`/health` を除く)に HTTP Basic 認証を適用済み(D-019)。`ADMIN_PASSWORD` 未設定時は
+`APP_ENV` が development/test の場合のみバイパスする(それ以外は fail-closed で401)。
 
-**本番対応**:
-1. FastAPI Depends でセッション管理追加
-2. OAuth 2.0 / OIDC 連携(Google/GitHub など)
-3. または Basic Auth + API Key
+**将来対応**:
+1. OAuth 2.0 / OIDC 連携(Google/GitHub など)によるユーザー個別識別・ロール分離
+2. 複数管理者運用時のセッション管理・監査ログの操作者別集計
+3. Rate limiting / ブルートフォース対策(下記参照)
 
 ### 詳細な監査ログ
 

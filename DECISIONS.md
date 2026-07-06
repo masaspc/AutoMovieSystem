@@ -116,3 +116,25 @@ publication_idempotency_key 属性を付与してタスクラッパーへ伝搬�
 Asset に role 列("background" / "audio:{n}" / "subtitle:srt|vtt" / "endcard")+
 UNIQUE(video_project_id, role)。マイグレーションの既存行 backfill は meta JSON から
 意味的に導出(導出不能・衝突時のみ id フォールバック)。
+
+## D-019: 管理画面/API全体にHTTP Basic認証をfail-closedで導入(2026-07-05, 外部レビュー起点)
+
+`app/core/auth.py` の `require_admin` dependency を web ルーター群・api ルーター群
+全体(`app.include_router(..., dependencies=[Depends(require_admin)])`)に適用する。
+`/health` のみ監視用途のため認証対象から除外する。
+
+判定ロジック(fail-closed):
+- `ADMIN_PASSWORD` が設定済み: `secrets.compare_digest` でユーザー名・パスワード双方を
+  タイミング攻撃耐性のある方法で検証する。不一致は 401(`WWW-Authenticate: Basic`)。
+- `ADMIN_PASSWORD` 未設定: `APP_ENV` が `development`/`test` の場合のみ認証をスキップし
+  (ユーザー名 `dev-anonymous` を返す。プロセス起動後初回に警告ログを1回出力)、
+  それ以外の `APP_ENV`(例: `production`)では常に401とする(パスワード未設定の
+  本番デプロイを事故で許してしまわないため)。
+
+承認/却下フロー(`app/web/approvals.py`)は認証ユーザー名を `decided_by` としてそのまま
+使う(フォームでの自己申告を廃止)。テスト(`tests/conftest.py`)は `APP_ENV=test` を
+明示することで既存挙動(認証バイパス)を維持する。
+
+代替案として「専用の認証テーブル+セッションCookie」も検討したが、MVPの管理者1〜数名
+運用にはHTTP Basic + fail-closedデフォルトで十分と判断した(ユーザー管理・ロール分離は
+将来要件、TASKS.md未解決事項参照)。

@@ -69,6 +69,10 @@ uv run uvicorn app.main:app --reload
 ブラウザで **http://localhost:8000/dashboard** を開く。
 Jinja2+HTMX による管理画面で企画・台本・レビュー・公開状況を監視。
 
+管理画面/APIはHTTP Basic認証で保護されている(D-019)。`APP_ENV=development`かつ
+`ADMIN_PASSWORD`未設定のローカル開発時は認証を求めずアクセス可能。本番相当の
+`APP_ENV`では`ADMIN_USERNAME`/`ADMIN_PASSWORD`(`.env`)の設定が必須(未設定は常に401)。
+
 ### 6. 日常の開発・テスト
 
 ```powershell
@@ -250,7 +254,7 @@ Windows PowerShell:
 ./scripts/dev.ps1 test-unit         # pytest tests/unit
 ./scripts/dev.ps1 test-integration  # pytest -m integration
 ./scripts/dev.ps1 test-e2e          # pytest -m e2e
-./scripts/dev.ps1 security-check    # pip check
+./scripts/dev.ps1 security-check    # pip check + pip-audit
 ./scripts/dev.ps1 clean-generated   # Remove generated/ (videos/audio)
 ```
 

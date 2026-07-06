@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.router import router as api_router
+from app.core.auth import require_admin
 from app.core.logging import configure_logging, get_logger
 from app.db.session import get_db
 from app.web.router import router as web_router
@@ -34,8 +35,10 @@ def create_app() -> FastAPI:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    app.include_router(web_router)
-    app.include_router(api_router)
+    # 管理画面/API全体にHTTP Basic認証を適用する(D-019)。/health は除外(監視用)。
+    admin_dependency = [Depends(require_admin)]
+    app.include_router(web_router, dependencies=admin_dependency)
+    app.include_router(api_router, dependencies=admin_dependency)
 
     @app.get("/health")
     def health(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
