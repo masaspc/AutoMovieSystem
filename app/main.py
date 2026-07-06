@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Annotated
 
@@ -30,6 +31,13 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Auto Movie System")
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    # CSS更新がブラウザのヒューリスティックキャッシュで反映されない問題への対策:
+    # 内容ハッシュをクエリ文字列に付与してキャッシュバストする(テンプレートから参照)。
+    admin_css = STATIC_DIR / "admin.css"
+    asset_version = (
+        hashlib.sha256(admin_css.read_bytes()).hexdigest()[:12] if admin_css.exists() else "0"
+    )
+    templates.env.globals["asset_version"] = asset_version
     app.state.templates = templates
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
