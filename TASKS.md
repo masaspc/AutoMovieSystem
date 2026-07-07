@@ -50,6 +50,15 @@
 - pip-audit: 既知脆弱性 0件
 - git履歴シークレットスキャン: 混入なし(.env は管理外)
 
+## 追加開発(feature/admin-ui-redesign ブランチ)
+
+- [x] 管理画面デザイン全面刷新(ダークサイドバー+カード+意味色バッジ、CSSキャッシュバスター)
+- [x] CSRFトークンのセッション内安定化 + 管理画面HTML no-store(多タブ/戻る対策)
+- [x] ローカルLLM対応: LocalLLMProvider(OpenAI互換: Ollama/LM Studio/vLLM)+
+      LLM_PROVIDER_LOW/MID/HIGH によるポリシー別ルーティング(D-020、docs/local-llm.md)
+- [ ] グロース機能(登録者0→1000目標のサイト構成): ベンチマークチャンネル分析・
+      企画量産・成長ダッシュボード(着手中)
+
 ## 未解決事項
 
 - Docker Desktop 初回起動中(GUI初期化待ち。docker CLI が PATH 未反映。compose 検証は Phase 8)
