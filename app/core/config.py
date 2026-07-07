@@ -130,6 +130,9 @@ class Settings(BaseSettings):
     DAILY_AI_BUDGET_MICRO_USD: int = 5_000_000
     MONTHLY_AI_BUDGET_MICRO_USD: int = 100_000_000
 
+    # グロース目標: 登録者数の到達目標(成長ダッシュボードの進捗計算に使用)。
+    GROWTH_SUBSCRIBER_TARGET: int = 1000
+
     # Topic スコアリングの重み(仕様§8)。合計は1.0でなければならない
     # (app/services/topics/scoring.py の validate_weights で検証)。
     TOPIC_SCORE_WEIGHT_DEMAND: float = 0.25

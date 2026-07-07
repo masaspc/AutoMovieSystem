@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}ベンチマーク | AutoMovie{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>ベンチマーク(参考動画)</h2>
+    <p class="page-desc">伸びている他チャンネルの動画を登録し、フォーマットを研究して差別化企画に変換します。転載は行いません(構成の研究のみ)。</p>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">参考動画を登録</h3>
+    <form method="post" action="/benchmarks">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <label>自チャンネル(この参考をどのチャンネル運用に使うか)</label>
+        <select name="channel_id" required>
+          {% for channel in channels %}
+          <option value="{{ channel.id }}">{{ channel.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>動画タイトル</label>
+        <input type="text" name="title" required placeholder="例: 【2026年版】○○を徹底比較してみた" />
+      </div>
+      <div class="field">
+        <label>チャンネル名</label>
+        <input type="text" name="channel_name" required />
+      </div>
+      <div class="field">
+        <label>動画URL</label>
+        <input type="text" name="url" required placeholder="https://www.youtube.com/watch?v=..." />
+      </div>
+      <div class="form-row">
+        <div class="field" style="margin: 0;">
+          <label>再生数(任意)</label>
+          <input type="text" name="views" style="width: 120px;" />
+        </div>
+        <div class="field" style="margin: 0;">
+          <label>チャンネル登録者(任意)</label>
+          <input type="text" name="subscribers" style="width: 120px;" />
+        </div>
+      </div>
+      <div class="field">
+        <label>フォーマットタグ(カンマ区切り)</label>
+        <input type="text" name="format_tags" placeholder="ランキング, 冒頭結論, 比較表" />
+      </div>
+      <div class="field">
+        <label>何が優れているか(メモ)</label>
+        <textarea name="notes" rows="3" placeholder="フックの作り方、章立て、サムネ文言など"></textarea>
+      </div>
+      <button type="submit">登録</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">登録済みベンチマーク</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>タイトル</th><th>チャンネル</th><th>再生/登録者</th><th>タグ</th><th>操作</th></tr>
+        {% for benchmark in benchmarks %}
+        <tr>
+          <td>
+            <a href="{{ benchmark.url }}" target="_blank" rel="noopener">{{ benchmark.title }}</a>
+            {% if benchmark.notes %}<div class="muted">{{ benchmark.notes }}</div>{% endif %}
+          </td>
+          <td>{{ benchmark.channel_name }}</td>
+          <td class="muted">{{ benchmark.views or "—" }} / {{ benchmark.subscribers or "—" }}</td>
+          <td>
+            {% for tag in (benchmark.format_tags or []) %}
+            <span class="badge badge-neutral">{{ tag }}</span>
+            {% endfor %}
+          </td>
+          <td>
+            <form class="inline" method="post" action="/benchmarks/{{ benchmark.id }}/derive-topic">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="btn-secondary btn-sm">差別化企画を生成</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty">まだ登録がありません。伸びている動画を左のフォームから登録してください。</div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

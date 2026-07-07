@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, progress_bar %}
+{% block title %}成長 | AutoMovie{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>成長(登録者{{ summary.subscriber_target }}人への道)</h2>
+    <p class="page-desc">良質なコンテンツの量産と勝ちパターンの反復で登録者を積み上げます。</p>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">登録者(純増)</div>
+    <div class="stat-value">{{ summary.subscribers_net }}<span class="muted" style="font-size: 14px;"> / {{ summary.subscriber_target }}</span></div>
+    {{ progress_bar(summary.progress_ratio) }}
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">総再生数</div>
+    <div class="stat-value">{{ summary.total_views }}</div>
+    <div class="stat-sub">推定収益: ${{ "%.2f" | format(summary.total_estimated_revenue) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">公開本数</div>
+    <div class="stat-value">{{ summary.uploads_completed }}</div>
+    <div class="stat-sub">直近28日: {{ summary.uploads_last_28_days }}本</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">投稿ペース</div>
+    <div class="stat-value">{{ summary.weekly_pace }}<span class="muted" style="font-size: 14px;"> 本/週</span></div>
+    <div class="stat-sub">量産バッチで底上げできます</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 class="card-title">量産バッチ(企画→動画→自動レビューまで一括制作)</h3>
+  <p class="muted" style="margin-top: 0;">
+    スコア上位の未制作企画をまとめて制作します。<strong>公開はされません</strong> —
+    自動レビュー合格分を動画プロジェクト画面で承認してください(fail-closed)。
+  </p>
+  <form method="post" action="/growth/production-batch" class="form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="field" style="margin: 0;">
+      <label>チャンネル</label>
+      <select name="channel_id" required>
+        {% for channel in channels %}
+        <option value="{{ channel.id }}">{{ channel.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="margin: 0;">
+      <label>制作本数(最大10)</label>
+      <input type="number" name="limit" value="3" min="1" max="10" style="width: 90px;" />
+    </div>
+    <button type="submit">▶ 量産バッチ実行</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 class="card-title">動画別パフォーマンス(登録効率順)</h3>
+  <p class="muted" style="margin-top: 0;">
+    登録効率(1000再生あたりの登録増)が高い動画が「勝ちパターン」です。続編で反復しましょう。
+  </p>
+  <div class="table-wrap">
+    <table>
+      <tr><th>タイトル</th><th>再生</th><th>CTR</th><th>維持率</th><th>登録増</th><th>登録効率</th><th>推定収益</th><th>操作</th></tr>
+      {% for perf in performances %}
+      <tr>
+        <td><a href="/video-projects/{{ perf.video_project_id }}">{{ perf.title }}</a></td>
+        <td>{{ perf.views }}</td>
+        <td>{{ "%.2f" | format(perf.ctr) }}</td>
+        <td>{{ "%.1f" | format(perf.average_view_percentage) }}%</td>
+        <td><strong>{{ perf.subscribers_gained }}</strong></td>
+        <td>{{ "%.1f" | format(perf.subs_per_1k_views) }} /1k</td>
+        <td>${{ "%.2f" | format(perf.estimated_revenue) }}</td>
+        <td>
+          <form class="inline" method="post" action="/growth/publications/{{ perf.publication_id }}/sequel">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button type="submit" class="btn-secondary btn-sm">続編を企画化</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8"><div class="empty">公開済み動画の指標がまだありません。制作→承認→投稿→指標同期後に表示されます。</div></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h3 class="card-title">成長ループの回し方</h3>
+  <ol style="margin: 0; padding-left: 20px;">
+    <li><a href="/benchmarks">ベンチマーク</a>に伸びている他チャンネル動画を登録 → 差別化企画を生成</li>
+    <li>上の量産バッチで自動レビューまで一括制作</li>
+    <li><a href="/video-projects">動画プロジェクト</a>で内容確認 → 承認 → 投稿</li>
+    <li>指標同期後、このページで勝ちパターンを特定 → 「続編を企画化」で反復</li>
+    <li><a href="/insights">改善提案</a>のコメント由来企画も量産バッチに自動で乗ります</li>
+  </ol>
+</div>
+{% endblock %}

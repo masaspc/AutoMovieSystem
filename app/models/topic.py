@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-SOURCE_TYPES = ("manual", "csv", "rss", "comment", "analytics", "derived", "webhook")
+SOURCE_TYPES = ("manual", "csv", "rss", "comment", "analytics", "derived", "webhook", "benchmark")
 RISK_LEVELS = ("low", "medium", "high")
 TOPIC_STATUSES = ("created", "scored", "research_ready", "rejected")
 

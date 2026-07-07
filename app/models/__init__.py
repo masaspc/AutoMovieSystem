@@ -1,5 +1,6 @@
 from app.models.approval import Approval
 from app.models.asset import Asset
+from app.models.benchmark_video import BenchmarkVideo
 from app.models.budget_ledger import BudgetLedger
 from app.models.channel import Channel
 from app.models.comment import Comment
@@ -19,6 +20,7 @@ from app.models.video_project import VideoProject
 __all__ = [
     "Approval",
     "Asset",
+    "BenchmarkVideo",
     "BudgetLedger",
     "Channel",
     "Comment",
