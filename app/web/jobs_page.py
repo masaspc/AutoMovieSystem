@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.csrf import issue_csrf_token, set_csrf_cookie
+from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.job_run import JobRun
@@ -84,7 +84,7 @@ def list_jobs(
         query = query.filter(JobRun.job_type == job_type)
     jobs = query.order_by(JobRun.created_at.desc()).limit(200).all()
 
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,

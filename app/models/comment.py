@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 COMMENT_CATEGORIES = (
@@ -48,7 +49,7 @@ class Comment(Base):
     requires_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     moderation_status: Mapped[str] = mapped_column(String(32), nullable=False, default="visible")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
     )

@@ -34,6 +34,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from app.core.config import Settings
 from app.core.crypto import decrypt_secret
 from app.core.logging import get_logger
+from app.core.timeutil import utcnow_naive
 from app.db.session import SessionLocal
 from app.models.oauth_token import OAuthToken
 from app.providers.youtube.base import (
@@ -242,7 +243,7 @@ class RealYouTubeProvider:
             created_at = (
                 datetime.strptime(published_at_raw, "%Y-%m-%dT%H:%M:%SZ")
                 if published_at_raw
-                else datetime.utcnow()
+                else utcnow_naive()
             )
             results.append(
                 UploadedVideoInfo(
@@ -298,7 +299,7 @@ class RealYouTubeProvider:
             view_count=int(stats.get("viewCount", 0)),
             like_count=int(stats.get("likeCount", 0)),
             comment_count=int(stats.get("commentCount", 0)),
-            collected_at=datetime.utcnow(),
+            collected_at=utcnow_naive(),
         )
 
     async def get_video_statistics(self, *, youtube_video_id: str) -> VideoStatistics:
@@ -332,7 +333,7 @@ class RealYouTubeProvider:
             published_at = (
                 datetime.strptime(published_at_raw, "%Y-%m-%dT%H:%M:%SZ")
                 if published_at_raw
-                else datetime.utcnow()
+                else utcnow_naive()
             )
             comments.append(
                 CommentData(

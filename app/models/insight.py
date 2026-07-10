@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, Float, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 
@@ -33,4 +34,4 @@ class Insight(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     recommended_action: Mapped[str] = mapped_column(String, nullable=False)
     human_review_reason: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)

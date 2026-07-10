@@ -37,6 +37,14 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(secret, salt=_CSRF_SALT)
 
 
+def _cookie_secure() -> bool:
+    """CSRF CookieのSecure属性。`CSRF_COOKIE_SECURE` 明示設定が最優先、未設定なら自動判定。"""
+    override = get_settings().CSRF_COOKIE_SECURE
+    if override is not None:
+        return override
+    return not _is_dev_environment()
+
+
 def set_csrf_cookie(response: object, token: str) -> None:
     """CSRF Cookieを共通属性(httponly/samesite=strict、非dev環境はsecure)で設定する。"""
     response.set_cookie(  # type: ignore[attr-defined]
@@ -44,13 +52,31 @@ def set_csrf_cookie(response: object, token: str) -> None:
         token,
         httponly=True,
         samesite="strict",
-        secure=not _is_dev_environment(),
+        secure=_cookie_secure(),
     )
 
 
 def issue_csrf_token() -> str:
     """署名済みCSRFトークンを発行する(Cookie+hiddenフィールド両方に同じ値を設定する)。"""
     return _serializer().dumps({"v": 1})
+
+
+def get_or_issue_csrf_token(request: object) -> str:
+    """リクエストのCookieに有効なCSRFトークンがあればそれを再利用し、なければ新規発行する。
+
+    ページ表示のたびに新トークンでCookieを上書きすると、複数タブや「戻る」で表示された
+    キャッシュ済みページのフォームトークンとCookieが食い違い、正当な操作が
+    "CSRF token invalid" になる。トークンをブラウザセッション内で安定させることで防ぐ。
+    """
+    cookie_value = request.cookies.get(CSRF_COOKIE_NAME)  # type: ignore[attr-defined]
+    if cookie_value:
+        try:
+            _serializer().loads(cookie_value, max_age=CSRF_MAX_AGE_SECONDS)
+        except (BadSignature, SignatureExpired):
+            pass
+        else:
+            return str(cookie_value)
+    return issue_csrf_token()
 
 
 def verify_csrf(cookie_value: str | None, form_value: str | None) -> bool:

@@ -138,3 +138,43 @@ UNIQUE(video_project_id, role)。マイグレーションの既存行 backfill �
 代替案として「専用の認証テーブル+セッションCookie」も検討したが、MVPの管理者1〜数名
 運用にはHTTP Basic + fail-closedデフォルトで十分と判断した(ユーザー管理・ロール分離は
 将来要件、TASKS.md未解決事項参照)。
+
+## D-020: OpenAI互換ローカルLLM + model_policy別プロバイダールーティング(2026-07-06)
+
+Ollama / LM Studio / vLLM が共通で話せる OpenAI互換 Chat Completions API
+(`POST {base_url}/chat/completions`)を話す `LocalLLMProvider`
+(`app/providers/llm/local_openai.py`)を追加した。既存の `AnthropicLLMProvider` と同じ
+`LLMProvider` Protocol・リトライ方針(tenacity、接続エラー/5xxを指数バックオフ最大3回)を
+踏襲するが、以下の点が異なる:
+
+- 構造化出力は `response_format={"type": "json_object"}` + システムプロンプトへの
+  JSON Schema(`response_schema.model_json_schema()`)埋め込みで指示する
+  (Anthropicの `tool_use` 強制と異なり、ローカルモデルはtool useを持たない前提)。
+  スキーマ不適合時の修復は自身で行わず、既存 `app/services/llm_gateway.py` の
+  修復リトライ(最大1回)に委ねる(anthropic.pyと同じ「provider自身は検証しない」契約)。
+- `estimated_cost_micro_usd` は常に `0`(ローカル実行はAPI課金が発生しない)。
+  `UsageRecord` には `provider="local"`、`model=` 実モデル名(例: `qwen3:32b`)で記録される。
+- usageフィールド(prompt_tokens/completion_tokens)が無い応答向けに、文字数からの
+  トークン数概算フォールバックを持つ(`fake.py` と同じ流儀)。
+
+また `LLM_PROVIDER_LOW`/`LLM_PROVIDER_MID`/`LLM_PROVIDER_HIGH`(空文字なら `LLM_PROVIDER`
+に従う)で `model_policy` ごとに異なるプロバイダーを選択できるようにした
+(`app/providers/llm/routing.py` の `RoutingLLMProvider`、`app/providers/llm/factory.py` の
+`get_llm_provider` が全ポリシー同一名なら従来どおり単一プロバイダーを返し、異なる場合のみ
+ラップする)。ハイブリッド構成(LOW/MID=local、HIGH=anthropic)を想定し、公開可否に関わる
+`high` ポリシー(仕様§9)はローカル小型モデルより高性能モデルまたは人間レビューを推奨する
+旨を `docs/local-llm.md` に明記した(`REQUIRE_HUMAN_APPROVAL=true` のfail-closedデフォルトが
+最終防御になる)。
+
+## D-021: グロース機能は「模倣=フォーマット研究」「量産=自動レビューまで」(2026-07-06)
+
+登録者0→1000目標のサイト構成として /growth(成長ダッシュボード)・/benchmarks
+(ベンチマーク)・量産バッチを追加した。設計上の一線:
+
+- ベンチマークは他チャンネル動画の「構成・フォーマットの研究」であり、コンテンツの
+  転載・流用は行わない(派生企画のdescriptionにもその旨を自動記載)
+- 量産バッチ(run_production_batch)は自動レビュー通過までしか進めない。承認・公開は
+  人間の操作を必須のまま残す(fail-closed維持)。制作工程は run_production_pipeline
+  として orchestration から抽出し、フルパイプラインと共通化
+- 人為的な再生・登録・評価・コメントを発生させる機能は実装しない(CLAUDE.md絶対原則)
+- 勝ちパターン特定は「登録効率(1000再生あたり登録増)」を第一ソートキーとする

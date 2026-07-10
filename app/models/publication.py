@@ -14,6 +14,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 PUBLICATION_PRIVACY_STATUSES = ("private", "unlisted", "public")
@@ -46,7 +47,7 @@ class Publication(Base):
     upload_status: Mapped[str] = mapped_column(String(16), nullable=False, default="started")
     last_error: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
     )

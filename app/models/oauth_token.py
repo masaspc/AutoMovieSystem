@@ -13,6 +13,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 
@@ -30,7 +31,7 @@ class OAuthToken(Base):
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     scopes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
     )

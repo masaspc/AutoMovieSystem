@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
 
+from app.core.timeutil import utcnow_naive
 from app.models.approval import Approval
 from app.models.channel import Channel
 from app.models.job_run import JobRun
@@ -213,7 +214,7 @@ def test_reconcile_after_crash_finds_existing_video_without_reupload(
             entity_id=project.id,
             idempotency_key=idempotency_key,
             status="started",
-            started_at=datetime.utcnow() - timedelta(hours=2),
+            started_at=utcnow_naive() - timedelta(hours=2),
         )
     )
     db_session.add(
@@ -264,7 +265,7 @@ def test_reconcile_not_found_falls_back_to_real_upload(db_session: Session, tmp_
             entity_id=project.id,
             idempotency_key=idempotency_key,
             status="started",
-            started_at=datetime.utcnow() - timedelta(hours=2),
+            started_at=utcnow_naive() - timedelta(hours=2),
         )
     )
     db_session.add(

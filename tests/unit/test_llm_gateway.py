@@ -27,10 +27,17 @@ class _DummySchema(BaseModel):
 class _StubProvider:
     """テスト用の最小限のLLMProvider実装(実APIを呼ばない)。"""
 
-    def __init__(self, responses: list[dict[str, Any]], *, model: str = "stub-model") -> None:
+    def __init__(
+        self,
+        responses: list[dict[str, Any]],
+        *,
+        model: str = "stub-model",
+        cost_micro_usd: int = 100,
+    ) -> None:
         self._responses = list(responses)
         self.calls = 0
         self.model = model
+        self._cost_micro_usd = cost_micro_usd
 
     async def generate_structured(
         self,
@@ -49,7 +56,7 @@ class _StubProvider:
             model=self.model,
             input_tokens=10,
             output_tokens=10,
-            estimated_cost_micro_usd=100,
+            estimated_cost_micro_usd=self._cost_micro_usd,
             latency_ms=1,
             cached=False,
         )
@@ -274,6 +281,69 @@ def test_call_llm_repairs_once_on_schema_violation(db_session: Session) -> None:
 
     assert provider.calls == 2
     assert result.data == {"value": "ok"}
+
+
+def test_call_llm_records_local_provider_with_zero_cost(db_session: Session) -> None:
+    """LLM_PROVIDER=local でも UsageRecord.provider=="local"・cost==0 で記録される。"""
+    provider = _StubProvider([{"value": "ok"}], model="qwen3:32b", cost_micro_usd=0)
+
+    result = _run(
+        call_llm(
+            db_session,
+            provider,
+            operation="generate_script",
+            prompt_version="v1",
+            system_prompt="sys",
+            user_prompt="usr",
+            response_schema=_DummySchema,
+            model_policy="mid",
+            idempotency_key="key-local",
+            job_run_id=None,
+            provider_name="local",
+        )
+    )
+
+    assert result.cached is False
+    usage = db_session.query(UsageRecord).one()
+    assert usage.provider == "local"
+    assert usage.model == "qwen3:32b"
+    assert usage.estimated_cost_micro_usd == 0
+
+
+def test_call_llm_resolves_policy_local_provider_before_budget_reservation(
+    db_session: Session,
+) -> None:
+    """ポリシー経由のlocalは、既定provider/Claude料金で予算予約してはならない。"""
+    provider = _StubProvider([{"value": "ok"}], model="qwen3:8b", cost_micro_usd=0)
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        LLM_PROVIDER="fake",
+        LLM_PROVIDER_LOW="local",
+        DAILY_AI_BUDGET_MICRO_USD=1,
+        MONTHLY_AI_BUDGET_MICRO_USD=1,
+    )
+
+    _run(
+        call_llm(
+            db_session,
+            provider,
+            operation="generate_script",
+            prompt_version="v1",
+            system_prompt="sys",
+            user_prompt="usr",
+            response_schema=_DummySchema,
+            model_policy="low",
+            idempotency_key="key-policy-local",
+            job_run_id=None,
+            settings=settings,
+        )
+    )
+
+    usage = db_session.query(UsageRecord).one()
+    daily_ledger = db_session.query(BudgetLedger).filter(BudgetLedger.period_type == "daily").one()
+    assert usage.provider == "local"
+    assert usage.model == "qwen3:8b"
+    assert daily_ledger.committed_micro_usd == 0
 
 
 def test_call_llm_raises_schema_error_if_repair_also_fails(db_session: Session) -> None:

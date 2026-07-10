@@ -207,6 +207,7 @@ AutoMovieSystem/
 │   ├── security.md          セキュリティ対策
 │   ├── content-policy.md    コンテンツポリシー
 │   ├── cost-control.md      コスト管理
+│   ├── local-llm.md         ローカルLLM(OpenAI互換)構成
 │   ├── youtube-oauth.md     YouTube OAuth 手順
 │   └── adr/                 設計判断記録(ADR-0001〜0007)
 ├── alembic/                 DB マイグレーション
@@ -233,8 +234,9 @@ sample_data/
 | **[docs/security.md](docs/security.md)** | セキュリティ実装・秘密管理・監査 |
 | **[docs/content-policy.md](docs/content-policy.md)** | コンテンツポリシー・自動公開条件 |
 | **[docs/cost-control.md](docs/cost-control.md)** | AI予算・UsageRecord・料金表 |
+| **[docs/local-llm.md](docs/local-llm.md)** | ローカルLLM(Ollama等)構成・ポリシー別ルーティング |
 | **[docs/youtube-oauth.md](docs/youtube-oauth.md)** | YouTube OAuth 取得手順 |
-| **[DECISIONS.md](DECISIONS.md)** | 採用決定事項(D-001〜D-018) |
+| **[DECISIONS.md](DECISIONS.md)** | 採用決定事項(D-001〜D-020) |
 | **[TASKS.md](TASKS.md)** | Phase 進行状況 |
 
 ## コマンドリファレンス

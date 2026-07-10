@@ -1,14 +1,25 @@
 {% extends "base.html" %}
-{% block title %}動画プロジェクト一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}動画プロジェクト一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>動画プロジェクト一覧</h2>
+<div class="page-header">
+  <div>
+    <h2>動画プロジェクト</h2>
+    <p class="page-desc">台本から投稿までの制作パイプライン。状態遷移は詳細画面から進行します。</p>
+  </div>
+</div>
 
-  <form method="get" action="/video-projects">
-    <label>ステータス: <input type="text" name="status" value="{{ status_filter }}" /></label>
-    <button type="submit">絞り込み</button>
+<div class="card">
+  <form method="get" action="/video-projects" class="form-row">
+    <div class="field" style="margin: 0;">
+      <label>ステータス</label>
+      <input type="text" name="status" value="{{ status_filter }}" placeholder="VIDEO_RENDERED など" />
+    </div>
+    <button type="submit" class="btn-secondary">絞り込み</button>
   </form>
+</div>
 
+<div class="table-wrap">
   <table>
     <tr><th>企画</th><th>ステータス</th><th>世代</th><th>更新日時</th></tr>
     {% for project in projects %}
@@ -18,11 +29,13 @@
           {{ topics_by_id.get(project.topic_id).title if topics_by_id.get(project.topic_id) else project.topic_id }}
         </a>
       </td>
-      <td>{{ project.status }}</td>
+      <td>{{ status_badge(project.status) }}</td>
       <td>{{ project.generation }}</td>
-      <td>{{ project.updated_at }}</td>
+      <td class="muted">{{ project.updated_at }}</td>
     </tr>
+    {% else %}
+    <tr><td colspan="4"><div class="empty">動画プロジェクトはまだありません。企画詳細から作成できます。</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}

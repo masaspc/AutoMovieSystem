@@ -1,41 +1,63 @@
 {% extends "base.html" %}
-{% block title %}レビュー結果 - {{ project.id }}{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}レビュー結果 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>VideoProject {{ project.id }}</h2>
-  <p>状態: {{ project.status }}</p>
+<div class="page-header">
+  <div>
+    <h2>承認・却下</h2>
+    <p class="page-desc mono">VideoProject {{ project.id }}</p>
+  </div>
+  <div class="actions">{{ status_badge(project.status) }}</div>
+</div>
 
-  <h3>レビュー結果</h3>
-  <ul>
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">レビュー結果</h3>
     {% for review in reviews %}
-    <li>
-      <strong>{{ review.reviewer_type }}</strong>
-      (version {{ review.review_version }}) -
-      {% if review.passed %}合格{% else %}不合格{% endif %}
-      (score: {{ review.score }})
-      <ul>
+    <div style="margin-bottom: 14px;">
+      <p style="margin: 0 0 6px;">
+        <strong>{{ review.reviewer_type }}</strong>
+        <span class="muted">(version {{ review.review_version }} / score: {{ review.score }})</span>
+        {% if review.passed %}{{ status_badge("合格") }}{% else %}{{ status_badge("不合格") }}{% endif %}
+      </p>
+      {% if review.findings %}
+      <ul style="margin: 0; padding-left: 20px;">
         {% for finding in review.findings %}
-        <li>[{{ finding.severity }}] {{ finding.code }}: {{ finding.message }}</li>
+        <li class="muted">[{{ finding.severity }}] {{ finding.code }}: {{ finding.message }}</li>
         {% endfor %}
       </ul>
-    </li>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="empty">レビューはまだありません</div>
     {% endfor %}
-  </ul>
+  </div>
 
-  <p>操作者: {{ operator }}</p>
+  <div>
+    <div class="card">
+      <h3 class="card-title">承認</h3>
+      <p class="muted" style="margin-top: 0;">操作者: <strong>{{ operator }}</strong>(ログインユーザーとして記録されます)</p>
+      <form method="post" action="/video-projects/{{ project.id }}/approve">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="field">
+          <label>理由</label>
+          <input type="text" name="reason" />
+        </div>
+        <button type="submit">承認</button>
+      </form>
+    </div>
 
-  <h3>承認</h3>
-  <form method="post" action="/video-projects/{{ project.id }}/approve">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>理由: <input type="text" name="reason" /></label>
-    <button type="submit">承認</button>
-  </form>
-
-  <h3>却下</h3>
-  <form method="post" action="/video-projects/{{ project.id }}/reject">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>理由: <input type="text" name="reason" /></label>
-    <button type="submit">却下</button>
-  </form>
-</section>
+    <div class="card">
+      <h3 class="card-title">却下</h3>
+      <form method="post" action="/video-projects/{{ project.id }}/reject">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="field">
+          <label>理由</label>
+          <input type="text" name="reason" />
+        </div>
+        <button type="submit" class="btn-danger">却下</button>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

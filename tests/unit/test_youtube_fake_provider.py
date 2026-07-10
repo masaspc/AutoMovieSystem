@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+from app.core.timeutil import utcnow_naive
 from app.providers.youtube.base import UploadRequest
+from app.providers.youtube.factory import get_youtube_provider
 from app.providers.youtube.fake import FakeYouTubeProvider, FakeYouTubeProviderStore
 
 
@@ -61,6 +63,26 @@ def test_store_can_be_shared_across_provider_instances() -> None:
     assert any(u.youtube_video_id == result.youtube_video_id for u in uploads)
 
 
+def test_factory_shares_store_across_requests() -> None:
+    """管理画面の別リクエストでも、Fake投稿を予約できる。"""
+    upload_provider = get_youtube_provider()
+    uploaded = asyncio.run(
+        upload_provider.upload_video(request=_request("amx-idem:factory-shared"))
+    )
+
+    schedule_provider = get_youtube_provider()
+    publish_at = datetime(2026, 8, 1, tzinfo=UTC)
+    asyncio.run(
+        schedule_provider.set_schedule(
+            youtube_video_id=uploaded.youtube_video_id,
+            publish_at=publish_at,
+        )
+    )
+
+    uploads = asyncio.run(schedule_provider.list_recent_uploads(max_results=10))
+    assert any(upload.youtube_video_id == uploaded.youtube_video_id for upload in uploads)
+
+
 def test_set_schedule_updates_stored_video() -> None:
     provider = FakeYouTubeProvider()
     marker = "amx-idem:upload:project-1:checksum-abc"
@@ -92,7 +114,7 @@ def test_seed_statistics_and_comments() -> None:
         view_count=100,
         like_count=10,
         comment_count=2,
-        collected_at=datetime.utcnow(),
+        collected_at=utcnow_naive(),
     )
     provider.seed_statistics(stats)
     provider.seed_comments(
@@ -102,7 +124,7 @@ def test_seed_statistics_and_comments() -> None:
                 youtube_comment_id="c-1",
                 author_display_name="viewer",
                 text="良い動画",
-                published_at=datetime.utcnow(),
+                published_at=utcnow_naive(),
             )
         ],
     )

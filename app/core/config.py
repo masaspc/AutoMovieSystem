@@ -10,6 +10,7 @@ from functools import lru_cache
 from glob import glob
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,6 +53,19 @@ class Settings(BaseSettings):
     # APP_ENV が development/test の場合のみ認証をスキップする(それ以外はfail-closedで401)。
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = ""
+
+    # CSRF CookieのSecure属性。未設定(None)なら自動: development/test以外でSecure付与。
+    # TLS終端なしのLAN(http://<IP>:8000)でproduction運用する場合のみ false を明示する
+    # (ブラウザはlocalhost以外の平文HTTPでSecure Cookieを保存しないため)。
+    CSRF_COOKIE_SECURE: bool | None = None
+
+    @field_validator("CSRF_COOKIE_SECURE", mode="before")
+    @classmethod
+    def _empty_csrf_cookie_secure_as_none(cls, value: object) -> object:
+        # .env の `CSRF_COOKIE_SECURE=`(空文字)を「未設定=自動判定」として扱う。
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     DATABASE_URL: str = "sqlite:///./local.db"
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -108,9 +122,30 @@ class Settings(BaseSettings):
     LLM_MODEL_MID: str = "claude-sonnet-5"
     LLM_MODEL_HIGH: str = "claude-opus-4-8"
 
+    # ローカルLLM(Ollama/LM Studio/vLLM等のOpenAI互換 Chat Completions API: D-020)。
+    # base_url例: Ollama="http://localhost:11434/v1", LM Studio="http://localhost:1234/v1"
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"
+    # 空ならAuthorizationヘッダーなし(Ollama等はキー不要)。設定時は "Bearer {key}"。
+    LOCAL_LLM_API_KEY: str = ""
+    # model_policy ("low"|"mid"|"high") -> ローカルモデル名。
+    LOCAL_LLM_MODEL_LOW: str = "qwen3:8b"
+    LOCAL_LLM_MODEL_MID: str = "qwen3:32b"
+    LOCAL_LLM_MODEL_HIGH: str = "qwen3:32b"
+    # ローカル推論は低速なため長めのデフォルト。
+    LOCAL_LLM_TIMEOUT_SECONDS: float = 300.0
+
+    # model_policy別のプロバイダー選択(D-020)。空文字なら LLM_PROVIDER に従う。
+    # 有効値: "fake" | "anthropic" | "local"。
+    LLM_PROVIDER_LOW: str = ""
+    LLM_PROVIDER_MID: str = ""
+    LLM_PROVIDER_HIGH: str = ""
+
     # AI予算(整数マイクロUSD, ADR-0007)。1 USD = 1_000_000 マイクロUSD。
     DAILY_AI_BUDGET_MICRO_USD: int = 5_000_000
     MONTHLY_AI_BUDGET_MICRO_USD: int = 100_000_000
+
+    # グロース目標: 登録者数の到達目標(成長ダッシュボードの進捗計算に使用)。
+    GROWTH_SUBSCRIBER_TARGET: int = 1000
 
     # Topic スコアリングの重み(仕様§8)。合計は1.0でなければならない
     # (app/services/topics/scoring.py の validate_weights で検証)。

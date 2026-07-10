@@ -28,6 +28,8 @@ from app.models.approval import Approval
 from app.models.evidence import Evidence
 from app.models.publication import Publication
 from app.models.review import Review
+from app.models.script import Script
+from app.models.topic import Topic
 from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
 from app.providers.tts.base import TTSProvider
@@ -229,18 +231,29 @@ def _seed_youtube_fake(provider: YouTubeProvider, *, youtube_video_id: str) -> N
     provider.seed_comments(youtube_video_id, comments)
 
 
-async def run_full_pipeline(
+@dataclass
+class ProductionResult:
+    """`run_production_pipeline`(制作工程: スコア→台本→動画→自動レビュー)の結果。"""
+
+    topic: Topic
+    project: VideoProject
+    script: Script
+    evidence: Evidence
+    review_passed: bool
+    skipped_steps: list[str] = field(default_factory=list)
+
+
+async def run_production_pipeline(
     session: Session,
     *,
-    channel_id: str,
     topic_id: str,
     providers: PipelineProviders,
-    approve_by: str = "demo-operator",
-    metrics_days: int = 2,
-) -> PipelineRunReport:
-    """企画(Topic)からInsight生成までの全工程を実行する(冪等・既存サービスをそのまま呼ぶ)。"""
-    del channel_id  # Topic.channel_idで既知。将来の権限検証拡張用に引数として残す。
+) -> ProductionResult:
+    """制作工程(スコアリング→台本→アセット→音声→レンダリング→自動レビュー)を実行する。
 
+    承認・アップロード以降は含まない(人間承認はfail-closedのまま残す)。冪等。
+    `run_full_pipeline` と量産バッチ(app/services/growth)の共通基盤。
+    """
     skipped_steps: list[str] = []
 
     # 1. スコアリング(冪等: JobRun idempotency_key="score_topic:{topic_id}")
@@ -305,7 +318,35 @@ async def run_full_pipeline(
     else:
         skipped_steps.append("automated_review_skipped")
 
-    review_passed = _latest_reviews_passed(session, project.id)
+    return ProductionResult(
+        topic=topic,
+        project=project,
+        script=script,
+        evidence=evidence,
+        review_passed=_latest_reviews_passed(session, project.id),
+        skipped_steps=skipped_steps,
+    )
+
+
+async def run_full_pipeline(
+    session: Session,
+    *,
+    channel_id: str,
+    topic_id: str,
+    providers: PipelineProviders,
+    approve_by: str = "demo-operator",
+    metrics_days: int = 2,
+) -> PipelineRunReport:
+    """企画(Topic)からInsight生成までの全工程を実行する(冪等・既存サービスをそのまま呼ぶ)。"""
+    del channel_id  # Topic.channel_idで既知。将来の権限検証拡張用に引数として残す。
+
+    production = await run_production_pipeline(session, topic_id=topic_id, providers=providers)
+    topic = production.topic
+    project = production.project
+    script = production.script
+    evidence = production.evidence
+    skipped_steps = production.skipped_steps
+    review_passed = production.review_passed
 
     # 6. 人間承認(既にApprovalがあれば再承認しない)
     approval = _existing_approval(session, project.id)

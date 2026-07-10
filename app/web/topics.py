@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.csrf import issue_csrf_token, set_csrf_cookie
+from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.channel import Channel
@@ -52,7 +52,7 @@ def list_topics(
     topics = query.order_by(Topic.total_score.desc()).all()
     channels = db.query(Channel).order_by(Channel.name).all()
 
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,
@@ -143,7 +143,7 @@ def topic_detail(topic_id: str, request: Request, db: DbSession) -> HTMLResponse
         .first()
     )
 
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,

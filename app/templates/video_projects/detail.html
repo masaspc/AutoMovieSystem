@@ -1,135 +1,212 @@
 {% extends "base.html" %}
-{% block title %}動画プロジェクト - {{ project.id }}{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}動画プロジェクト詳細 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>動画プロジェクト {{ project.id }}</h2>
-  <p>企画: {{ topic.title if topic else project.topic_id }}</p>
-  <p>ステータス: {{ project.status }}</p>
+<div class="page-header">
+  <div>
+    <h2>{{ topic.title if topic else "動画プロジェクト" }}</h2>
+    <p class="page-desc mono">{{ project.id }}</p>
+  </div>
+  <div class="actions">
+    {{ status_badge(project.status) }}
+    {% if next_action %}
+    <form class="inline" method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit">▶ {{ next_action[0] }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
 
-  {% if script %}
-  <h3>台本(バージョン {{ script.version }})</h3>
-  <p>{{ script.title }}</p>
-  <ol>
-    {% for section in (script.body.get("sections") or []) %}
-    <li>
-      <strong>{{ section.get("heading", "") }}</strong>
-      <p>{{ section.get("narration", "") }}</p>
-    </li>
-    {% endfor %}
-  </ol>
-  {% else %}
-  <p>台本は未生成です</p>
-  {% endif %}
-
-  <h3>出典(Evidence)</h3>
-  <ul>
-    {% for evidence in evidence_list %}
-    <li>{{ evidence.claim }}(<a href="{{ evidence.source_url }}">{{ evidence.source_url }}</a>)</li>
-    {% endfor %}
-  </ul>
-
-  <h3>素材(Asset)一覧</h3>
-  <table>
-    <tr><th>種別</th><th>役割</th><th>パス</th></tr>
-    {% for asset in assets %}
-    <tr><td>{{ asset.asset_type }}</td><td>{{ asset.role }}</td><td>{{ asset.file_path }}</td></tr>
-    {% endfor %}
-  </table>
-
-  <h3>動画プレビュー</h3>
-  {% if media_available %}
-  <video class="preview" controls src="/media/{{ project.id }}"></video>
-  {% else %}
-  <p>動画は未生成です</p>
-  {% endif %}
-
-  <h3>自動レビュー結果</h3>
-  <table>
-    <tr><th>種別</th><th>バージョン</th><th>合否</th><th>スコア</th></tr>
-    {% for review in reviews %}
-    <tr>
-      <td>{{ review.reviewer_type }}</td>
-      <td>{{ review.review_version }}</td>
-      <td>{% if review.passed %}合格{% else %}不合格{% endif %}</td>
-      <td>{{ review.score }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-
-  {% if blocking_findings %}
-  <h4>Blocking Findings</h4>
-  <ul>
+{% if blocking_findings %}
+<div class="flash flash-error">
+  <strong>Blocking Findings({{ blocking_findings | length }}件)— 解消するまで公開できません</strong>
+  <ul style="margin: 6px 0 0; padding-left: 20px;">
     {% for finding in blocking_findings %}
     <li data-testid="blocking-finding">[{{ finding.code }}] {{ finding.message }}</li>
     {% endfor %}
   </ul>
-  {% endif %}
+</div>
+{% endif %}
 
-  <h3>承認・却下</h3>
-  {% if approval %}
-  <p>決裁済み: {{ approval.decision }}(決裁者: {{ approval.decided_by }})</p>
-  {% else %}
-  <form class="inline" method="post" action="/video-projects/{{ project.id }}/approve">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>決裁者: <input type="text" name="decided_by" value="admin" required /></label>
-    <button type="submit">承認</button>
-  </form>
-  <form class="inline" method="post" action="/video-projects/{{ project.id }}/reject">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>決裁者: <input type="text" name="decided_by" value="admin" required /></label>
-    <button type="submit">却下</button>
-  </form>
-  {% endif %}
+<div class="detail-grid">
+  <div>
+    <div class="card">
+      <h3 class="card-title">動画プレビュー</h3>
+      {% if media_available %}
+      <video class="preview" controls src="/media/{{ project.id }}"></video>
+      {% else %}
+      <div class="empty">動画は未生成です</div>
+      {% endif %}
+    </div>
 
-  <h3>パイプライン進行</h3>
-  {% if next_action %}
-  <form method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button type="submit">{{ next_action[0] }}</button>
-  </form>
-  {% else %}
-  <p>現在実行可能なパイプラインステップはありません(失敗状態の場合は /jobs から再実行してください)</p>
-  {% endif %}
+    <div class="card">
+      <h3 class="card-title">台本{% if script %}(バージョン {{ script.version }}){% endif %}</h3>
+      {% if script %}
+      <p style="font-weight: 700; margin-top: 0;">{{ script.title }}</p>
+      <ol style="padding-left: 20px;">
+        {% for section in (script.body.get("sections") or []) %}
+        <li style="margin-bottom: 10px;">
+          <strong>{{ section.get("heading", "") }}</strong>
+          <p class="muted" style="margin: 4px 0 0;">{{ section.get("narration", "") }}</p>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <div class="empty">台本は未生成です</div>
+      {% endif %}
+    </div>
 
-  <h3>投稿状態</h3>
-  {% if publication %}
-  <p>{{ publication.upload_status }} / {{ publication.youtube_video_id or "未発行" }}(公開範囲: {{ publication.privacy_status }})</p>
-  {% else %}
-  <p>未投稿です</p>
-  {% endif %}
+    <div class="card">
+      <h3 class="card-title">出典(Evidence)</h3>
+      {% if evidence_list %}
+      <ul style="margin: 0; padding-left: 20px;">
+        {% for evidence in evidence_list %}
+        <li>{{ evidence.claim }} <a href="{{ evidence.source_url }}" class="mono">{{ evidence.source_url }}</a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">出典はありません</div>
+      {% endif %}
+    </div>
 
-  <h3>投稿後指標</h3>
-  <table>
-    <tr><th>日付</th><th>再生数</th><th>CTR</th><th>視聴維持率</th><th>コメント数</th></tr>
-    {% for metric in metrics %}
-    <tr>
-      <td>{{ metric.metric_date }}</td>
-      <td>{{ metric.views }}</td>
-      <td>{{ metric.ctr }}</td>
-      <td>{{ metric.average_view_percentage }}</td>
-      <td>{{ metric.comments_count }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+    <div class="card">
+      <h3 class="card-title">素材(Asset)</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>種別</th><th>役割</th><th>パス</th></tr>
+          {% for asset in assets %}
+          <tr>
+            <td>{{ status_badge(asset.asset_type) }}</td>
+            <td>{{ asset.role }}</td>
+            <td class="mono">{{ asset.file_path }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3"><div class="empty">素材はまだありません</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
 
-  <h3>関連コメント</h3>
-  <table>
-    <tr><th>カテゴリ</th><th>本文</th></tr>
-    {% for comment in comments %}
-    <tr><td>{{ comment.category }}</td><td>{{ comment.text }}</td></tr>
-    {% endfor %}
-  </table>
+  <div>
+    <div class="card">
+      <h3 class="card-title">承認・却下</h3>
+      {% if approval %}
+      <p style="margin: 0;">
+        {{ status_badge(approval.decision) }}
+        <span class="muted">決裁者: {{ approval.decided_by }}</span>
+      </p>
+      {% else %}
+      <div class="actions">
+        <form class="inline" method="post" action="/video-projects/{{ project.id }}/approve">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit">承認</button>
+        </form>
+        <form class="inline" method="post" action="/video-projects/{{ project.id }}/reject">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn-danger">却下</button>
+        </form>
+      </div>
+      <p class="muted" style="margin-bottom: 0;">決裁者はログイン中のユーザーとして記録されます。</p>
+      {% endif %}
+    </div>
 
-  <h3>改善提案(Insight)</h3>
-  <table>
-    <tr><th>種別</th><th>内容</th><th>推奨アクション</th></tr>
-    {% for insight in insights %}
-    <tr>
-      <td>{{ insight.insight_type }}</td>
-      <td>{{ insight.finding }}</td>
-      <td>{{ insight.recommended_action }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</section>
+    <div class="card">
+      <h3 class="card-title">パイプライン進行</h3>
+      {% if next_action %}
+      <form method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit">▶ {{ next_action[0] }}</button>
+      </form>
+      {% else %}
+      <p class="muted" style="margin: 0;">現在実行可能なパイプラインステップはありません(失敗状態の場合は <a href="/jobs">ジョブ</a> から再実行してください)</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">自動レビュー結果</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>種別</th><th>Ver</th><th>合否</th><th>スコア</th></tr>
+          {% for review in reviews %}
+          <tr>
+            <td>{{ review.reviewer_type }}</td>
+            <td>{{ review.review_version }}</td>
+            <td>{% if review.passed %}{{ status_badge("合格") }}{% else %}{{ status_badge("不合格") }}{% endif %}</td>
+            <td>{{ review.score }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4"><div class="empty">レビューは未実行です</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">投稿状態</h3>
+      {% if publication %}
+      <p style="margin: 0;">
+        {{ status_badge(publication.upload_status) }}
+        <span class="mono">{{ publication.youtube_video_id or "未発行" }}</span>
+        <span class="badge badge-neutral">{{ publication.privacy_status }}</span>
+      </p>
+      {% else %}
+      <div class="empty">未投稿です</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">投稿後指標</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>日付</th><th>再生数</th><th>CTR</th><th>維持率</th><th>コメント</th></tr>
+          {% for metric in metrics %}
+          <tr>
+            <td>{{ metric.metric_date }}</td>
+            <td>{{ metric.views }}</td>
+            <td>{{ metric.ctr }}</td>
+            <td>{{ metric.average_view_percentage }}</td>
+            <td>{{ metric.comments_count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="empty">指標はまだありません</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">関連コメント</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>カテゴリ</th><th>本文</th></tr>
+          {% for comment in comments %}
+          <tr><td>{{ status_badge(comment.category) }}</td><td>{{ comment.text }}</td></tr>
+          {% else %}
+          <tr><td colspan="2"><div class="empty">コメントはまだありません</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">改善提案(Insight)</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>種別</th><th>内容</th><th>推奨アクション</th></tr>
+          {% for insight in insights %}
+          <tr>
+            <td>{{ status_badge(insight.insight_type) }}</td>
+            <td>{{ insight.finding }}</td>
+            <td class="muted">{{ insight.recommended_action }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3"><div class="empty">Insightはまだありません</div></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

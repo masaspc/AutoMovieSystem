@@ -317,3 +317,13 @@ server {
 - **[docs/operations.md](operations.md)** - バックアップ・復旧
 - **[docs/content-policy.md](content-policy.md)** - 無断転載禁止等
 - **[DECISIONS.md](../DECISIONS.md)** - ADR-0007(Fernet暗号化決定)
+
+## LANアクセス時の注意(CSRF CookieのSecure属性)
+
+production 相当(APP_ENV が development/test 以外)では CSRF Cookie に `Secure` 属性を
+付与する。ブラウザは `http://localhost` では Secure Cookie を許可するが、
+**TLS なしの LAN アドレス(例: `http://192.168.x.x:8000`)では Cookie が保存されず、
+すべての変更系操作が CSRF エラーになる**。対処は次のいずれか:
+
+1. 推奨: リバースプロキシでTLS終端し HTTPS でアクセスする
+2. 暫定: `.env` で `CSRF_COOKIE_SECURE=false` を明示する(信頼できるLANに限ること)

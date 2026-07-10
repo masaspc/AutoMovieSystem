@@ -1,28 +1,52 @@
 {% extends "base.html" %}
-{% block title %}設定{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}設定 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>設定(読み取り専用)</h2>
+<div class="page-header">
+  <div>
+    <h2>設定(読み取り専用)</h2>
+    <p class="page-desc">変更は .env で行い、アプリを再起動してください。fail-closed が既定です。</p>
+  </div>
+</div>
 
-  <h3>主要設定</h3>
-  <table>
-    {% for key, value in general.items() %}
-    <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
-    {% endfor %}
-  </table>
+<div class="detail-grid">
+  <div class="card">
+    <h3 class="card-title">主要設定</h3>
+    <div class="table-wrap">
+      <table class="kv-table">
+        {% for key, value in general.items() %}
+        <tr><th class="mono">{{ key }}</th><td>{{ value }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
 
-  <h3>モデルマッピング(model_policy -> モデルID)</h3>
-  <table>
-    {% for policy, model in model_mapping.items() %}
-    <tr><th>{{ policy }}</th><td>{{ model }}</td></tr>
-    {% endfor %}
-  </table>
+  <div>
+    <div class="card">
+      <h3 class="card-title">モデルマッピング(model_policy → モデルID)</h3>
+      <div class="table-wrap">
+        <table class="kv-table">
+          {% for policy, model in model_mapping.items() %}
+          <tr><th>{{ policy }}</th><td class="mono">{{ model }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
 
-  <h3>シークレット設定状況(値は表示しません)</h3>
-  <table>
-    {% for key, status in secrets_status.items() %}
-    <tr><th>{{ key }}</th><td>{{ status }}</td></tr>
-    {% endfor %}
-  </table>
-</section>
+    <div class="card">
+      <h3 class="card-title">シークレット設定状況</h3>
+      <p class="muted" style="margin-top: 0;">値は表示されません。</p>
+      <div class="table-wrap">
+        <table class="kv-table">
+          {% for key, status in secrets_status.items() %}
+          <tr>
+            <th class="mono">{{ key }}</th>
+            <td>{% if '設定済み' in (status | string) %}<span class="badge badge-success">{{ status }}</span>{% else %}<span class="badge badge-warning">{{ status }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

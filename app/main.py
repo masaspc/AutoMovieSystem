@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.router import router as api_router
 from app.core.auth import require_admin
+from app.core.config import Settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import get_db
 from app.web.router import router as web_router
@@ -26,14 +28,39 @@ logger = get_logger(__name__)
 
 def create_app() -> FastAPI:
     configure_logging()
+    # 起動時の公開ドキュメント設定だけは、リクエスト側の設定キャッシュを汚さずに読む。
+    settings = Settings()
+    is_development = settings.APP_ENV in ("development", "test")
 
-    app = FastAPI(title="Auto Movie System")
+    app = FastAPI(
+        title="Auto Movie System",
+        docs_url="/docs" if is_development else None,
+        redoc_url="/redoc" if is_development else None,
+        openapi_url="/openapi.json" if is_development else None,
+    )
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    # CSS更新がブラウザのヒューリスティックキャッシュで反映されない問題への対策:
+    # 内容ハッシュをクエリ文字列に付与してキャッシュバストする(テンプレートから参照)。
+    admin_css = STATIC_DIR / "admin.css"
+    asset_version = (
+        hashlib.sha256(admin_css.read_bytes()).hexdigest()[:12] if admin_css.exists() else "0"
+    )
+    templates.env.globals["asset_version"] = asset_version
     app.state.templates = templates
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.middleware("http")
+    async def no_store_html(request, call_next):  # type: ignore[no-untyped-def]
+        # 認証済み管理画面HTMLのブラウザキャッシュを禁止する。「戻る」で古いページが
+        # 表示されCSRFトークンや状態表示が食い違う問題を防ぐ(静的ファイル・動画は対象外)。
+        response = await call_next(request)
+        content_type = response.headers.get("content-type", "")
+        if content_type.startswith("text/html"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     # 管理画面/API全体にHTTP Basic認証を適用する(D-019)。/health は除外(監視用)。
     admin_dependency = [Depends(require_admin)]

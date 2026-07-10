@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 JOB_RUN_STATUSES = ("started", "succeeded", "failed", "skipped")
@@ -23,12 +24,12 @@ class JobRun(Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="started")
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String, nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
     )

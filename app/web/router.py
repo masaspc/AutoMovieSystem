@@ -5,8 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.web.approvals import router as approvals_router
+from app.web.benchmarks_page import router as benchmarks_router
 from app.web.comments_page import router as comments_router
 from app.web.dashboard import router as dashboard_router
+from app.web.growth_page import router as growth_router
 from app.web.insights_page import router as insights_router
 from app.web.jobs_page import router as jobs_router
 from app.web.publications_page import router as publications_router
@@ -18,6 +20,8 @@ from app.web.video_projects import router as video_projects_router
 
 router = APIRouter(tags=["web"])
 router.include_router(dashboard_router)
+router.include_router(growth_router)
+router.include_router(benchmarks_router)
 router.include_router(topics_router)
 router.include_router(video_projects_router)
 router.include_router(approvals_router)

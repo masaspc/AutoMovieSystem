@@ -1,5 +1,50 @@
 # ClaudeCode 引き継ぎメモ
 
+## 最新更新 (2026-07-11, Codex)
+
+対象HEAD: `f252b4c` (グロース機能まで実装済み)。この追記を含む作業ツリーには未コミットの
+レビュー是正があります。次の実装者は、まず `git diff` を確認してからコミットしてください。
+
+### 今回完了したレビュー是正
+
+- LLM gateway が `LLM_PROVIDER_LOW/MID/HIGH` の実際の設定を解決するよう修正。
+  `local` 選択時はローカルモデル名で使用量を記録し、課金ゼロとして予算予約もゼロになる。
+- `get_youtube_provider()` が同一アプリプロセス内では共有Fakeストアを使うよう修正。
+  別管理画面リクエストで、Fake投稿後の公開予約が `video not found` にならない。
+- production相当では FastAPI の `/docs`、`/redoc`、`/openapi.json` を無効化。
+- Docker Compose の app/worker/beat は `APP_ENV=production` を強制。
+  `.env` の `ADMIN_PASSWORD` が空の場合、認証バイパスではなく全管理操作が401となる。
+- ベンチマークURLを YouTube の `http(s)` URL に限定し、`javascript:` 等を拒否。
+- CI security job の `continue-on-error` を除去し、`pip-audit` の失敗をCI失敗に変更。
+
+### 追加した回帰テスト
+
+- ポリシー別 `local` ルーティングで予算1 micro-USDでも実行・記録できること。
+- Factoryを別々に呼んでもFake YouTubeの予約ができること。
+- productionで標準OpenAPIドキュメントが404になること。
+- 危険なベンチマークURLが保存されないこと。
+
+### 検証済み
+
+```powershell
+uv run pytest tests/unit/test_llm_gateway.py tests/unit/test_youtube_fake_provider.py tests/unit/test_auth.py tests/unit/test_growth.py -q
+# 33 passed
+uv run ruff check app tests
+uv run ruff format --check app tests
+uv run mypy app
+docker compose config --quiet
+# uv run pytest -q
+# 299 passed, 1 skipped
+```
+
+### 残る注意点
+
+- Fake YouTubeの共有ストアはプロセス内に限定される。実運用はReal YouTube APIが正本であり問題ないが、複数workerをまたぐFake状態の永続シミュレーションは対象外。
+- `datetime.utcnow()` とTestClientの非推奨警告は既存分が残る。
+- 全件 `pytest -q`: 299 passed, 1 skipped (2026-07-11)。
+
+## 2026-07-05 時点の履歴
+
 作成日: 2026-07-05
 作成者: Codex
 対象HEAD: `658b685 Phase 5: YouTube投稿(OAuth/冪等アップロード/Fake YouTube/reconcile)`

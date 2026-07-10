@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from app.core.timeutil import utcnow_naive
 from app.db.session import get_db
 from app.models.budget_ledger import BudgetLedger
 from app.models.insight import Insight
@@ -56,7 +57,7 @@ def dashboard(request: Request, db: DbSession) -> HTMLResponse:
     latest_publication = db.query(Publication).order_by(Publication.created_at.desc()).first()
     latest_insight = db.query(Insight).order_by(Insight.created_at.desc()).first()
 
-    today = datetime.utcnow().date()
+    today = utcnow_naive().date()
     day_start = datetime(today.year, today.month, today.day)
     next_day_start = day_start + timedelta(days=1)
     month_start = datetime(today.year, today.month, 1)

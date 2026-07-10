@@ -1,30 +1,45 @@
 {% extends "base.html" %}
-{% block title %}投稿一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}投稿一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>投稿一覧</h2>
-  <form method="get" action="/publications">
-    <label>アップロード状態: <input type="text" name="upload_status" value="{{ upload_status_filter }}" /></label>
-    <button type="submit">絞り込み</button>
+<div class="page-header">
+  <div>
+    <h2>投稿(Publication)</h2>
+    <p class="page-desc">アップロード状況と公開予約。公開は6条件ゲートを通過した場合のみ実行されます。</p>
+  </div>
+</div>
+
+<div class="card">
+  <form method="get" action="/publications" class="form-row">
+    <div class="field" style="margin: 0;">
+      <label>アップロード状態</label>
+      <input type="text" name="upload_status" value="{{ upload_status_filter }}" placeholder="completed など" />
+    </div>
+    <button type="submit" class="btn-secondary">絞り込み</button>
   </form>
+</div>
+
+<div class="table-wrap">
   <table>
-    <tr><th>タイトル</th><th>アップロード状態</th><th>YouTube動画ID</th><th>公開範囲</th><th>公開予約</th><th>操作</th></tr>
+    <tr><th>タイトル</th><th>状態</th><th>YouTube動画ID</th><th>公開範囲</th><th>公開予約</th><th>操作</th></tr>
     {% for publication in publications %}
     <tr>
       <td><a href="/video-projects/{{ publication.video_project_id }}">{{ publication.title }}</a></td>
-      <td>{{ publication.upload_status }}</td>
-      <td>{{ publication.youtube_video_id or "未発行" }}</td>
-      <td>{{ publication.privacy_status }}</td>
-      <td>{{ publication.scheduled_at or "-" }}</td>
+      <td>{{ status_badge(publication.upload_status) }}</td>
+      <td class="mono">{{ publication.youtube_video_id or "未発行" }}</td>
+      <td><span class="badge badge-neutral">{{ publication.privacy_status }}</span></td>
+      <td class="muted">{{ publication.scheduled_at or "—" }}</td>
       <td>
-        <form class="inline" method="post" action="/publications/{{ publication.id }}/schedule">
+        <form class="inline form-row" method="post" action="/publications/{{ publication.id }}/schedule" style="gap: 6px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <label>公開予約日時: <input type="datetime-local" name="scheduled_at" /></label>
-          <button type="submit">公開予約(空なら即時)</button>
+          <label class="muted" style="font-weight: 400;">公開予約日時: <input type="datetime-local" name="scheduled_at" /></label>
+          <button type="submit" class="btn-secondary btn-sm">公開予約(空なら即時)</button>
         </form>
       </td>
     </tr>
+    {% else %}
+    <tr><td colspan="6"><div class="empty">投稿はまだありません</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}

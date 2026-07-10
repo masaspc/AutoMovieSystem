@@ -1,32 +1,48 @@
 {% extends "base.html" %}
-{% block title %}コメント一覧{% endblock %}
+{% from "_macros.html" import status_badge %}
+{% block title %}コメント一覧 | AutoMovie{% endblock %}
 {% block content %}
-<section>
-  <h2>コメント一覧</h2>
+<div class="page-header">
+  <div>
+    <h2>コメント</h2>
+    <p class="page-desc">同期済みコメントの分類結果。次回企画要望は自動で企画候補になります。</p>
+  </div>
+</div>
 
-  <h3>カテゴリ別件数</h3>
-  <table>
-    <tr><th>カテゴリ</th><th>件数</th></tr>
-    {% for category, count in category_summary.items() %}
-    <tr><td>{{ category }}</td><td>{{ count }}</td></tr>
-    {% endfor %}
-  </table>
+<div class="stat-grid">
+  {% for category, count in category_summary.items() %}
+  <div class="stat-card">
+    <div class="stat-label">{{ category }}</div>
+    <div class="stat-value">{{ count }}</div>
+  </div>
+  {% else %}
+  <div class="stat-card"><div class="empty">コメントはまだありません</div></div>
+  {% endfor %}
+</div>
 
-  <form method="get" action="/comments">
-    <label>カテゴリ: <input type="text" name="category" value="{{ category_filter }}" /></label>
-    <button type="submit">絞り込み</button>
+<div class="card">
+  <form method="get" action="/comments" class="form-row">
+    <div class="field" style="margin: 0;">
+      <label>カテゴリ</label>
+      <input type="text" name="category" value="{{ category_filter }}" placeholder="NEXT_TOPIC_REQUEST など" />
+    </div>
+    <button type="submit" class="btn-secondary">絞り込み</button>
   </form>
+</div>
 
+<div class="table-wrap">
   <table>
     <tr><th>カテゴリ</th><th>感情</th><th>本文</th><th>要対応</th></tr>
     {% for comment in comments %}
     <tr>
-      <td>{{ comment.category }}</td>
+      <td>{{ status_badge(comment.category) }}</td>
       <td>{{ comment.sentiment }}</td>
       <td>{{ comment.text }}</td>
-      <td>{% if comment.requires_response %}要{% else %}-{% endif %}</td>
+      <td>{% if comment.requires_response %}<span class="badge badge-warning">要対応</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>
+    {% else %}
+    <tr><td colspan="4"><div class="empty">コメントはまだありません</div></td></tr>
     {% endfor %}
   </table>
-</section>
+</div>
 {% endblock %}

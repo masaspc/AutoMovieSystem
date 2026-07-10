@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
-from app.core.csrf import CSRF_COOKIE_NAME, issue_csrf_token, set_csrf_cookie, verify_csrf
+from app.core.csrf import CSRF_COOKIE_NAME, get_or_issue_csrf_token, set_csrf_cookie, verify_csrf
 from app.db.session import get_db
 from app.models.review import Review
 from app.models.video_project import VideoProject
@@ -49,7 +49,7 @@ def show_review(
         raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
 
     reviews = _latest_reviews(db, video_project_id)
-    csrf_token = issue_csrf_token()
+    csrf_token = get_or_issue_csrf_token(request)
 
     templates = request.app.state.templates
     response = templates.TemplateResponse(

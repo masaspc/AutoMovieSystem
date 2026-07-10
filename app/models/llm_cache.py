@@ -13,6 +13,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 
@@ -35,4 +36,4 @@ class LLMCache(Base):
     # StructuredLLMResult.data をJSON文字列としてそのまま保存する。
     response_json: Mapped[str] = mapped_column(String, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
