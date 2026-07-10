@@ -9,6 +9,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+{% from "_icons.html" import icon %}
 {% set path = request.url.path %}
 {% macro nav_item(href, label) -%}
 <li><a class="nav-link{{ ' active' if (path == href or (href != '/dashboard' and path.startswith(href + '/')) or (href != '/dashboard' and path == href)) else '' }}" href="{{ href }}">{{ label }}</a></li>
@@ -16,6 +17,7 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="brand"><span class="brand-dot"></span>AutoMovie</div>
+    <a class="nav-help{{ ' active' if path == '/help' else '' }}" href="/help">{{ icon('question', 16) }} 使い方ガイド</a>
     <nav class="nav">
       <div class="nav-group">
         <div class="nav-heading">グロース</div>

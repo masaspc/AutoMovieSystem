@@ -9,6 +9,7 @@ from app.web.benchmarks_page import router as benchmarks_router
 from app.web.comments_page import router as comments_router
 from app.web.dashboard import router as dashboard_router
 from app.web.growth_page import router as growth_router
+from app.web.help_page import router as help_router
 from app.web.insights_page import router as insights_router
 from app.web.jobs_page import router as jobs_router
 from app.web.publications_page import router as publications_router
@@ -19,6 +20,7 @@ from app.web.usage_page import router as usage_router
 from app.web.video_projects import router as video_projects_router
 
 router = APIRouter(tags=["web"])
+router.include_router(help_router)
 router.include_router(dashboard_router)
 router.include_router(growth_router)
 router.include_router(benchmarks_router)

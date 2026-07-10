@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% from "_icons.html" import icon %}
+{% block title %}使い方ガイド | AutoMovie{% endblock %}
+{% block content %}
+
+<div class="card guide-hero">
+  <div>
+    <h2>使い方ガイド</h2>
+    <p class="page-desc" style="margin-top: 6px;">
+      初めての方は、上から順に読みながら実際に画面を操作してみてください。
+      今の設定(Fakeモード)では何回失敗しても実際のYouTubeには一切影響しません。
+    </p>
+    <div class="guide-quicklinks">
+      <a href="#flow">① 全体の流れ</a>
+      <a href="#first-video">② 動画を1本作る</a>
+      <a href="#badges">③ 色の意味</a>
+      <a href="#growth">④ たくさん作る</a>
+      <a href="#youtube">⑤ YouTube接続</a>
+      <a href="#faq">⑥ 困ったとき</a>
+      <a href="#glossary">⑦ 用語集</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ① 全体の流れ ===== -->
+<div class="guide-section" id="flow">
+  <h3 class="guide-section-title">① システム全体の流れ</h3>
+  <p class="guide-section-desc">
+    「ネタを思いつく」から「結果を見て次のネタに活かす」までを、ひとつのループで回します。
+  </p>
+  <div class="card">
+    <div class="guide-flow">
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('idea', 26) }}</div>
+        <div class="guide-flow-label">企画</div>
+        <div class="guide-flow-sub">ネタを選ぶ</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('script', 26) }}</div>
+        <div class="guide-flow-label">台本</div>
+        <div class="guide-flow-sub">AIが原稿作成</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('film', 26) }}</div>
+        <div class="guide-flow-label">動画生成</div>
+        <div class="guide-flow-sub">音声+画像+字幕</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('shield', 26) }}</div>
+        <div class="guide-flow-label">自動レビュー</div>
+        <div class="guide-flow-sub">機械チェック</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('check', 26) }}</div>
+        <div class="guide-flow-label">人間の承認</div>
+        <div class="guide-flow-sub">あなたが最終確認</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('upload', 26) }}</div>
+        <div class="guide-flow-label">投稿</div>
+        <div class="guide-flow-sub">まずprivateで公開</div>
+      </div>
+      <div class="guide-flow-arrow">→</div>
+      <div class="guide-flow-step">
+        <div class="guide-flow-icon">{{ icon('chart', 26) }}</div>
+        <div class="guide-flow-label">分析</div>
+        <div class="guide-flow-sub">再生数・コメント</div>
+      </div>
+    </div>
+    <div class="guide-flow-loop">↺ 分析結果から、また新しい企画が生まれます(改善提案・続編企画)</div>
+    <div class="guide-callout guide-callout-info" style="margin-top: 16px;">
+      <strong>一番大事なポイント:</strong> AIがすべて自動でやるのではなく、
+      「人間の承認」の工程を必ず通ります。承認しない限り投稿はされません(安全第一の設計です)。
+    </div>
+  </div>
+</div>
+
+<!-- ===== ② はじめの一歩 ===== -->
+<div class="guide-section" id="first-video">
+  <h3 class="guide-section-title">② はじめの一歩: 動画を1本作ってみる</h3>
+  <p class="guide-section-desc">実際に手を動かして、①〜⑤を順番に試してみましょう。</p>
+  <div class="card">
+    <div class="guide-steps">
+
+      <div class="guide-step">
+        <div class="guide-step-number">1</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('idea', 18) }} 企画(ネタ)を選ぶ</p>
+          <p class="guide-step-desc">
+            <a href="/topics">「企画」</a>ページを開くと、ネタの一覧が並んでいます。
+            気になるタイトルをクリックして詳細画面を開き、「スコア計算」ボタンを押してください。
+            需要・独自性など6項目で点数がつきます。
+          </p>
+          <a class="btn btn-secondary btn-sm" href="/topics">企画ページを開く</a>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">2</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('script', 18) }} 台本を作る</p>
+          <p class="guide-step-desc">
+            同じ企画詳細画面で「台本生成」ボタンを押すと、AIが動画の構成とナレーション原稿を
+            数秒で自動作成します。続けて「動画プロジェクト作成」ボタンを押すと、
+            動画を組み立てるための箱ができます。
+          </p>
+          <ul class="guide-substeps">
+            <li>台本生成</li>
+            <li>動画プロジェクト作成</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">3</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('film', 18) }} 動画を組み立てる</p>
+          <p class="guide-step-desc">
+            <a href="/video-projects">「動画プロジェクト」</a>の詳細画面を開くと、
+            右上に青い「▶ 次の作業」ボタンが出ます。押すたびに次の順で進みます
+            (1〜2分かかる作業もあります)。レンダリングが終わると、実際に再生できる動画が
+            画面に表示されます。
+          </p>
+          <ul class="guide-substeps">
+            <li>素材準備</li>
+            <li>音声合成</li>
+            <li>レンダリング</li>
+            <li>自動レビュー</li>
+          </ul>
+          <div class="guide-callout guide-callout-warning">
+            レビューで問題(Blocking Findings)が見つかった場合は赤字で表示され、
+            その先(承認・投稿)には進めません。内容を見直してください。
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">4</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('check', 18) }} 内容を確認して承認する</p>
+          <p class="guide-step-desc">
+            自動レビューに合格したら、同じ画面の「承認」ボタンを押します。
+            承認した人はログイン中のユーザー名として記録されます(監査ログ)。
+            気になる点があれば「却下」を選んでやり直せます。
+          </p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">5</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('upload', 18) }} 投稿する</p>
+          <p class="guide-step-desc">
+            承認後に出てくる「▶ アップロード」ボタンを押します。
+            Fakeモードでは実際のYouTubeには繋がらず、テスト用の動画ID(<code>fake-xxxxx</code>)が
+            発行されます。実際のYouTubeに繋ぐ方法は
+            <a href="#youtube">⑤ YouTube接続</a>で説明します。
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== ③ バッジの見方 ===== -->
+<div class="guide-section" id="badges">
+  <h3 class="guide-section-title">③ 画面の色の意味(バッジ)</h3>
+  <p class="guide-section-desc">
+    ステータスは色付きのラベル(バッジ)で表示されます。色の意味は画面全体で共通です。
+  </p>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="guide-badge-legend">
+        <tr><th>色</th><th>意味</th><th>表示例</th></tr>
+        <tr>
+          <td><strong>緑</strong></td>
+          <td>成功・完了・合格</td>
+          <td>{{ status_badge("合格") }} {{ status_badge("completed") }} {{ status_badge("PUBLISHED") }}</td>
+        </tr>
+        <tr>
+          <td><strong>青</strong></td>
+          <td>進行中・準備完了</td>
+          <td>{{ status_badge("VIDEO_RENDERED") }} {{ status_badge("SCHEDULED") }}</td>
+        </tr>
+        <tr>
+          <td><strong>グレー</strong></td>
+          <td>未着手・下書き</td>
+          <td>{{ status_badge("created") }} {{ status_badge("draft") }}</td>
+        </tr>
+        <tr>
+          <td><strong>アンバー</strong></td>
+          <td>要確認・保留</td>
+          <td>{{ status_badge("pending") }} {{ status_badge("held") }}</td>
+        </tr>
+        <tr>
+          <td><strong>赤</strong></td>
+          <td>失敗・却下・要対応</td>
+          <td>{{ status_badge("RENDER_FAILED") }} {{ status_badge("不合格") }} {{ status_badge("REJECTED") }}</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ④ グロース機能 ===== -->
+<div class="guide-section" id="growth">
+  <h3 class="guide-section-title">④ たくさん作りたいとき(グロース機能)</h3>
+  <p class="guide-section-desc">
+    1本ずつ手作業するのが大変になったら、「成長」「ベンチマーク」ページを使います。
+    登録者数<strong>1000人</strong>を目指すための機能です。
+  </p>
+  <div class="card">
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="guide-step-number">1</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('target', 18) }} 伸びている動画を登録する</p>
+          <p class="guide-step-desc">
+            <a href="/benchmarks">「ベンチマーク」</a>ページで、伸びている他チャンネルの動画URLを
+            登録します。中身をコピーするのではなく、「タイトルの付け方」「構成」など
+            <strong>成功パターンだけを参考</strong>にした、自分用の新しい企画をAIが作ってくれます。
+          </p>
+          <a class="btn btn-secondary btn-sm" href="/benchmarks">ベンチマークページを開く</a>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">2</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('layers', 18) }} 量産バッチでまとめて制作</p>
+          <p class="guide-step-desc">
+            <a href="/growth">「成長」</a>ページの「量産バッチ実行」で本数を指定すると、
+            スコアの高い企画から自動レビューまでまとめて作られます。
+            <strong>ここでも投稿は自動化されません</strong> — 合格した動画は
+            「動画プロジェクト」ページで1本ずつ確認・承認してください。
+          </p>
+          <a class="btn btn-secondary btn-sm" href="/growth">成長ページを開く</a>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">3</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">{{ icon('chart', 18) }} 結果を見て、勝ちパターンを繰り返す</p>
+          <p class="guide-step-desc">
+            投稿後、統計が反映されると「成長」ページに登録者数への進捗と、動画ごとの
+            「登録効率」が表示されます。効率の良い動画は「続編を企画化」ボタンで
+            すぐに次の企画にできます。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ⑤ YouTube接続 ===== -->
+<div class="guide-section" id="youtube">
+  <h3 class="guide-section-title">⑤ 実際のYouTubeに接続する方法</h3>
+  <p class="guide-section-desc">
+    ここまでの操作はすべて「Fakeモード」(テスト用のダミー投稿)でした。
+    実際のYouTubeチャンネルに投稿したい場合は、以下の準備が必要です。
+  </p>
+  <div class="card">
+    <div class="guide-callout guide-callout-info">
+      <strong>この作業はブラウザだけではできません。</strong>
+      サーバー(このアプリを動かしているPC)のターミナルで、コマンドを1つ実行する必要があります。
+      作業自体は一度きりで、以降はブラウザだけで投稿できるようになります。
+    </div>
+
+    <div class="guide-steps" style="margin-top: 20px;">
+      <div class="guide-step">
+        <div class="guide-step-number">1</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">Googleでアプリを登録する</p>
+          <p class="guide-step-desc">
+            <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>
+            でプロジェクトを作成し、「YouTube Data API v3」を有効化します。
+            「OAuth同意画面」でアプリ名などを入力し、投稿に使うGoogleアカウントを
+            「テストユーザー」として追加してください。
+          </p>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">2</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">認証情報(鍵)を作る</p>
+          <p class="guide-step-desc">
+            「認証情報を作成」→「OAuthクライアントID」→種類は<strong>デスクトップアプリ</strong>を選びます。
+            作成後にダウンロードできる <code>client_secret_xxxx.json</code> というファイルが、
+            アプリを認証するための鍵になります。
+          </p>
+          <div class="guide-callout guide-callout-warning">
+            このファイルは絶対にリポジトリへコミットしないでください
+            (<code>.gitignore</code> 済みの安全な場所に保存)。
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">3</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title"><code>.env</code> ファイルに設定を書く</p>
+          <p class="guide-step-desc">サーバーの <code>.env</code> ファイルに、以下を追記します。</p>
+          <pre class="mono" style="background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; white-space: pre-wrap;">SECRET_ENCRYPTION_KEY=&lt;十分に長いランダム文字列&gt;
+YOUTUBE_PROVIDER=real
+YOUTUBE_OAUTH_CLIENT_ID=&lt;client_secret.jsonのclient_id&gt;
+YOUTUBE_OAUTH_CLIENT_SECRET=&lt;client_secret.jsonのclient_secret&gt;</pre>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">4</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">サーバーで認証コマンドを実行する</p>
+          <p class="guide-step-desc">サーバーのターミナルで次を実行すると、ブラウザが開いてGoogleアカウントの許可を求められます。許可すると自動的に完了します(コピー&ペースト不要)。</p>
+          <pre class="mono" style="background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px;">uv run python scripts/youtube_oauth_setup.py --client-secret path/to/client_secret_xxxx.json</pre>
+          <p class="guide-step-desc" style="margin-top: 8px;">
+            取得した認証情報は暗号化してデータベースに保存されます。パスワードのような
+            平文の情報が画面やログに表示されることはありません。
+          </p>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-number">5</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">設定できたか確認する</p>
+          <p class="guide-step-desc">
+            <a href="/settings">「設定」</a>ページを開き、<code>YOUTUBE_PROVIDER</code> が
+            <code>real</code>、<code>YOUTUBE_OAUTH_CLIENT_ID</code>・
+            <code>YOUTUBE_OAUTH_CLIENT_SECRET</code> が「設定済み」になっていれば準備完了です。
+          </p>
+          <a class="btn btn-secondary btn-sm" href="/settings">設定ページを開く</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-callout guide-callout-success" style="margin-top: 4px;">
+      <strong>接続後も安全設計は変わりません。</strong>
+      最初の投稿は必ず「非公開(private)」になります。実際に世界に公開されるのは、
+      自動レビュー合格・人間の承認・重複チェックなど<strong>6つの条件をすべて満たし</strong>、
+      かつ設定で <code>AUTO_PUBLISH_ENABLED=true</code>(既定は無効)にした場合だけです。
+    </div>
+  </div>
+</div>
+
+<!-- ===== ⑥ よくある詰まりどころ ===== -->
+<div class="guide-section" id="faq">
+  <h3 class="guide-section-title">⑥ よくある詰まりどころ</h3>
+  <p class="guide-section-desc">項目をクリックすると答えが開きます。</p>
+
+  <details class="guide-faq-item">
+    <summary>「実行中です」と表示されてボタンが進まない</summary>
+    <div class="guide-faq-body">
+      同じ処理が裏側でまだ動いている最中です(二重に実行しない安全のための仕組みです)。
+      数十秒待ってからページを再読み込みしてください。
+    </div>
+  </details>
+
+  <details class="guide-faq-item">
+    <summary>「公開予約」を押すと拒否理由が表示される</summary>
+    <div class="guide-faq-body">
+      故障ではありません。既定では自動公開が無効になっているため、わざと拒否されています。
+      投稿ページから理由を確認できます(承認が未完了、自動公開が無効、など)。
+    </div>
+  </details>
+
+  <details class="guide-faq-item">
+    <summary>ボタンを押すとエラーになる</summary>
+    <div class="guide-faq-body">
+      左メニューの<a href="/jobs">「ジョブ」</a>を開くと、失敗した処理の一覧と
+      「再実行」ボタンがあります。エラー内容もそこで確認できます。
+    </div>
+  </details>
+
+  <details class="guide-faq-item">
+    <summary>画面が真っ白になった/古い表示のまま動かない</summary>
+    <div class="guide-faq-body">
+      ブラウザの「戻る」ボタンで古いキャッシュ画面が表示されることがあります。
+      ページを再読み込み(F5)してから操作し直してください。
+    </div>
+  </details>
+
+  <details class="guide-faq-item">
+    <summary>ログイン画面でパスワードがわからない</summary>
+    <div class="guide-faq-body">
+      このアプリを起動した人に、サーバーの <code>.env</code> ファイルにある
+      <code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> を確認してもらってください。
+    </div>
+  </details>
+</div>
+
+<!-- ===== ⑦ 用語集 ===== -->
+<div class="guide-section" id="glossary">
+  <h3 class="guide-section-title">⑦ 用語集</h3>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="kv-table">
+        <tr><td class="guide-glossary-term">企画(Topic)</td><td>動画のネタ・アイデア1件。スコアが付けられる単位。</td></tr>
+        <tr><td class="guide-glossary-term">台本(Script)</td><td>AIが作る、動画の構成とナレーション原稿。</td></tr>
+        <tr><td class="guide-glossary-term">動画プロジェクト</td><td>1本の動画が完成するまでの作業一式(状態管理の単位)。</td></tr>
+        <tr><td class="guide-glossary-term">素材(Asset)</td><td>音声・画像・字幕など、動画を組み立てる部品。</td></tr>
+        <tr><td class="guide-glossary-term">レビュー</td><td>動画の長さ・音量・内容に問題がないかの自動チェック結果。</td></tr>
+        <tr><td class="guide-glossary-term">承認</td><td>人間が「投稿してよい」と判断した記録(誰がいつ承認したか残ります)。</td></tr>
+        <tr><td class="guide-glossary-term">投稿(Publication)</td><td>YouTubeへのアップロード状況・公開設定の記録。</td></tr>
+        <tr><td class="guide-glossary-term">ジョブ(JobRun)</td><td>裏側の処理(台本生成・レンダリング等)1回ごとの実行記録。</td></tr>
+        <tr><td class="guide-glossary-term">改善提案(Insight)</td><td>コメントや再生データから見つかった、次に活かせるヒント。</td></tr>
+        <tr><td class="guide-glossary-term">ベンチマーク</td><td>参考にする他チャンネルの動画。企画の元ネタ作りに使う。</td></tr>
+        <tr><td class="guide-glossary-term">コスト(利用状況)</td><td>AI(台本生成など)にかかった費用と、使いすぎを防ぐ予算の状況。</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
