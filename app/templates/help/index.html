@@ -9,23 +9,111 @@
     <h2>使い方ガイド</h2>
     <p class="page-desc" style="margin-top: 6px;">
       初めての方は、上から順に読みながら実際に画面を操作してみてください。
-      今の設定(Fakeモード)では何回失敗しても実際のYouTubeには一切影響しません。
+      まずはFakeモードで流れを確認し、立ち絵掛け合い動画は準備ができてから有効にします。
     </p>
     <div class="guide-quicklinks">
-      <a href="#flow">① 全体の流れ</a>
-      <a href="#first-video">② 動画を1本作る</a>
-      <a href="#badges">③ 色の意味</a>
-      <a href="#growth">④ たくさん作る</a>
-      <a href="#youtube">⑤ YouTube接続</a>
-      <a href="#faq">⑥ 困ったとき</a>
-      <a href="#glossary">⑦ 用語集</a>
+      <a href="#character-setup">① 立ち絵動画の準備</a>
+      <a href="#flow">② 全体の流れ</a>
+      <a href="#first-video">③ 動画を1本作る</a>
+      <a href="#badges">④ 色の意味</a>
+      <a href="#growth">⑤ たくさん作る</a>
+      <a href="#youtube">⑥ YouTube接続</a>
+      <a href="#faq">⑦ 困ったとき</a>
+      <a href="#glossary">⑧ 用語集</a>
     </div>
   </div>
 </div>
 
-<!-- ===== ① 全体の流れ ===== -->
+<!-- ===== ① 立ち絵掛け合い動画の準備 ===== -->
+<div class="guide-section" id="character-setup">
+  <h3 class="guide-section-title">① 立ち絵掛け合い動画を作る準備</h3>
+  <p class="guide-section-desc">
+    ずんだもんと四国めたんが会話する動画には、公式立ち絵、VOICEVOX Engine、設定の反映が必要です。
+    ここは最初の一度だけ行います。設定前でも、Fakeモードの通常動画フローは試せます。
+  </p>
+  <div class="card">
+    <div class="guide-callout guide-callout-warning">
+      <strong>先に素材の利用条件を確認してください。</strong>
+      公式立ち絵はリポジトリに同梱していません。収益化、法人利用、利用地域を含む条件を確認したうえで、
+      正規に入手した透明PNGだけを配置します。
+      <a href="https://zunko.jp/con_illust.html" target="_blank" rel="noopener">公式イラスト素材ページ</a>
+      と<a href="https://zunko.jp/guideline.html" target="_blank" rel="noopener">キャラクター利用ガイドライン</a>を読んでください。
+    </div>
+
+    <div class="guide-steps" style="margin-top: 20px;">
+      <div class="guide-step">
+        <div class="guide-step-number">1</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">公式立ち絵を配置する</p>
+          <p class="guide-step-desc">
+            プロジェクト直下の <code>assets/characters</code> に、キャラクターごとのフォルダーを作ります。
+            <code>normal.png</code> は必須です。<code>talk.png</code> を用意すると、発話中に簡易口パクします。
+          </p>
+          <pre class="mono" style="background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; white-space: pre-wrap;">assets/characters/
+  zundamon/normal.png
+  zundamon/talk.png       # 任意: 発話中の差分
+  metan/normal.png
+  metan/talk.png          # 任意: 発話中の差分
+  tsumugi/normal.png      # つむぎを選ぶ場合は必須</pre>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">2</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">VOICEVOXと立ち絵レンダリングを有効にする</p>
+          <p class="guide-step-desc">
+            <code>.env</code> を開き、以下を設定します。春日部つむぎを出さない場合は、
+            最終行を <code>DIALOGUE_CAST=zundamon,metan</code> にします。
+          </p>
+          <pre class="mono" style="background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; white-space: pre-wrap;">COMPOSE_PROFILES=voicevox
+TTS_PROVIDER=voicevox
+DIALOGUE_SCRIPT_ENABLED=true
+CHARACTER_RENDER_ENABLED=true
+DIALOGUE_CAST=zundamon,metan,tsumugi</pre>
+          <p class="guide-step-desc" style="margin-top: 8px;">
+            ずんだもん・四国めたんは基本の2人です。つむぎは設定に含めた場合だけ、補足が有効な場面で台本の候補になります。
+          </p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">3</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">Dockerを再作成し、設定を確認する</p>
+          <p class="guide-step-desc">
+            プロジェクトのフォルダーでPowerShellを開き、次を実行します。初回はVOICEVOXのDockerイメージ取得に時間がかかります。
+          </p>
+          <pre class="mono" style="background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px;">.\scripts\dev.ps1 up</pre>
+          <p class="guide-step-desc" style="margin-top: 8px;">
+            起動後に<a href="/settings">「設定」</a>を開き、<code>TTS_PROVIDER</code> が <code>voicevox</code>、
+            <code>DIALOGUE_SCRIPT_ENABLED</code> と <code>CHARACTER_RENDER_ENABLED</code> が <code>True</code>、話者設定が意図どおりであることを確認します。
+          </p>
+          <a class="btn btn-secondary btn-sm" href="/settings">設定ページを開く</a>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-number">4</div>
+        <div class="guide-step-body">
+          <p class="guide-step-title">最初の1本は最後までプレビューする</p>
+          <p class="guide-step-desc">
+            次の「動画を1本作る」の手順でレンダリングまで進めます。動画プロジェクト詳細で、立ち絵、話者、字幕、音声、
+            クレジットが期待どおりか確認してから承認してください。素材が不足している場合は、背景だけの動画にせずレンダリングを停止します。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-callout guide-callout-info" style="margin-top: 4px;">
+      VOICEVOXを使った投稿では、使用した話者のクレジットを概要欄へ自動で追加します。立ち絵の利用条件と音声の利用条件は別なので、両方を確認してください。
+    </div>
+  </div>
+</div>
+
+<!-- ===== ② 全体の流れ ===== -->
 <div class="guide-section" id="flow">
-  <h3 class="guide-section-title">① システム全体の流れ</h3>
+  <h3 class="guide-section-title">② システム全体の流れ</h3>
   <p class="guide-section-desc">
     「ネタを思いつく」から「結果を見て次のネタに活かす」までを、ひとつのループで回します。
   </p>
@@ -81,9 +169,9 @@
   </div>
 </div>
 
-<!-- ===== ② はじめの一歩 ===== -->
+<!-- ===== ③ はじめの一歩 ===== -->
 <div class="guide-section" id="first-video">
-  <h3 class="guide-section-title">② はじめの一歩: 動画を1本作ってみる</h3>
+  <h3 class="guide-section-title">③ はじめの一歩: 動画を1本作ってみる</h3>
   <p class="guide-section-desc">実際に手を動かして、①〜⑤を順番に試してみましょう。</p>
   <div class="card">
     <div class="guide-steps">
@@ -169,9 +257,9 @@
   </div>
 </div>
 
-<!-- ===== ③ バッジの見方 ===== -->
+<!-- ===== ④ バッジの見方 ===== -->
 <div class="guide-section" id="badges">
-  <h3 class="guide-section-title">③ 画面の色の意味(バッジ)</h3>
+  <h3 class="guide-section-title">④ 画面の色の意味(バッジ)</h3>
   <p class="guide-section-desc">
     ステータスは色付きのラベル(バッジ)で表示されます。色の意味は画面全体で共通です。
   </p>
@@ -209,9 +297,9 @@
   </div>
 </div>
 
-<!-- ===== ④ グロース機能 ===== -->
+<!-- ===== ⑤ グロース機能 ===== -->
 <div class="guide-section" id="growth">
-  <h3 class="guide-section-title">④ たくさん作りたいとき(グロース機能)</h3>
+  <h3 class="guide-section-title">⑤ たくさん作りたいとき(グロース機能)</h3>
   <p class="guide-section-desc">
     1本ずつ手作業するのが大変になったら、「成長」「ベンチマーク」ページを使います。
     登録者数<strong>1000人</strong>を目指すための機能です。
@@ -258,9 +346,9 @@
   </div>
 </div>
 
-<!-- ===== ⑤ YouTube接続 ===== -->
+<!-- ===== ⑥ YouTube接続 ===== -->
 <div class="guide-section" id="youtube">
-  <h3 class="guide-section-title">⑤ 実際のYouTubeに接続する方法</h3>
+  <h3 class="guide-section-title">⑥ 実際のYouTubeに接続する方法</h3>
   <p class="guide-section-desc">
     ここまでの操作はすべて「Fakeモード」(テスト用のダミー投稿)でした。
     実際のYouTubeチャンネルに投稿したい場合は、以下の準備が必要です。
@@ -346,9 +434,9 @@ YOUTUBE_OAUTH_CLIENT_SECRET=&lt;client_secret.jsonのclient_secret&gt;</pre>
   </div>
 </div>
 
-<!-- ===== ⑥ よくある詰まりどころ ===== -->
+<!-- ===== ⑦ よくある詰まりどころ ===== -->
 <div class="guide-section" id="faq">
-  <h3 class="guide-section-title">⑥ よくある詰まりどころ</h3>
+  <h3 class="guide-section-title">⑦ よくある詰まりどころ</h3>
   <p class="guide-section-desc">項目をクリックすると答えが開きます。</p>
 
   <details class="guide-faq-item">
@@ -390,11 +478,30 @@ YOUTUBE_OAUTH_CLIENT_SECRET=&lt;client_secret.jsonのclient_secret&gt;</pre>
       <code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> を確認してもらってください。
     </div>
   </details>
+
+  <details class="guide-faq-item">
+    <summary>立ち絵動画のレンダリングが失敗した</summary>
+    <div class="guide-faq-body">
+      <code>assets/characters</code> の <code>normal.png</code> を確認してください。
+      <code>DIALOGUE_CAST</code> に <code>tsumugi</code> を含めた場合は、
+      <code>tsumugi/normal.png</code> も必要です。次に<a href="/jobs">「ジョブ」</a>でエラー内容を確認し、
+      素材または設定を直してから「再実行」を押します。
+    </div>
+  </details>
+
+  <details class="guide-faq-item">
+    <summary>声がFakeのまま / VOICEVOXの声が出ない</summary>
+    <div class="guide-faq-body">
+      <code>.env</code> の <code>TTS_PROVIDER=voicevox</code> と
+      <code>COMPOSE_PROFILES=voicevox</code> を確認し、<code>.\scripts\dev.ps1 up</code> で再作成してください。
+      「設定」ページで値を確認できます。Docker Desktopが起動していない場合も音声生成はできません。
+    </div>
+  </details>
 </div>
 
-<!-- ===== ⑦ 用語集 ===== -->
+<!-- ===== ⑧ 用語集 ===== -->
 <div class="guide-section" id="glossary">
-  <h3 class="guide-section-title">⑦ 用語集</h3>
+  <h3 class="guide-section-title">⑧ 用語集</h3>
   <div class="card">
     <div class="table-wrap">
       <table class="kv-table">

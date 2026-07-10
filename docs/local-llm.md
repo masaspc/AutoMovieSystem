@@ -5,6 +5,40 @@
 話す。API課金が発生しないため `estimated_cost_micro_usd` は常に `0` として記録される
 (D-020)。
 
+## 最短セットアップ(Windows + RTX 4090 + Docker Desktop)
+
+Docker Desktopが起動済みなら、プロジェクト直下のPowerShellで次を一度だけ実行する。
+
+```powershell
+.\scripts\setup-local-ai.ps1
+```
+
+このスクリプトはOllamaの導入、`qwen3:32b` の取得、`.env` のローカルLLM設定、Docker Composeの
+再構築、アプリとコンテナからOllamaへの接続確認までを行う。RTX 4090 (24GB VRAM) では32Bクラスを
+第一候補としているが、初回ダウンロードには時間とディスク容量を要する。
+
+軽量モデルから試す場合は、次を使う。
+
+```powershell
+.\scripts\setup-local-ai.ps1 -Model qwen3:8b
+```
+
+公式立ち絵をすでに必要な場所へ配置済みで、VOICEVOXも同時に有効化する場合は次を使う。
+利用条件の確認と `normal.png` の配置が済んでいない場合、このオプションは安全のため停止する。
+
+```powershell
+.\scripts\setup-local-ai.ps1 -EnableCharacterVideo
+```
+
+つむぎを使わない2人掛け合いにする場合は、以下のように指定する。
+
+```powershell
+.\scripts\setup-local-ai.ps1 -EnableCharacterVideo -DialogueCast "zundamon,metan"
+```
+
+自動化できないのは、Docker Desktopの初回利用規約同意と、公式立ち絵の利用許諾確認・素材配置だけである。
+完了後は `http://localhost:8000/dashboard` を開き、設定ページで `LLM_PROVIDER=local` を確認する。
+
 ## 前提
 
 - 外部APIプロバイダーと同様、`app/providers/llm/base.py` の `LLMProvider` Protocol に
@@ -28,25 +62,74 @@
 低VRAM環境では `LOCAL_LLM_MODEL_LOW`/`MID` に軽量モデル(8B前後)、余裕があれば
 `HIGH` にも同クラスの量子化モデルを割り当てる。
 
-## Ollama セットアップ手順(Windows/Mac共通の概略)
+## Ollama セットアップ手順
 
-1. [ollama.com](https://ollama.com/) からインストール、または `winget install Ollama.Ollama`
-2. モデルを取得: `ollama pull qwen3:8b` / `ollama pull qwen3:32b`
-3. サーバーは既定で `http://localhost:11434` で待受(OpenAI互換パスは `/v1` 配下)
-4. `.env` に以下を設定:
+### Docker Desktopでこのアプリを動かす場合(Windows / Mac)
+
+このプロジェクトの通常起動はDocker Composeである。OllamaはホストOSにインストールして
+起動し、Dockerコンテナ内の `app` / `worker` から接続する。**コンテナから見た
+`localhost` はホストOSではない**ため、`LOCAL_LLM_BASE_URL` に `localhost` は使わない。
+
+1. [ollama.com](https://ollama.com/) からOllamaをインストールする。Windowsでは次でもよい。
+
+   ```powershell
+   winget install Ollama.Ollama
+   ```
+
+2. PowerShellでモデルを取得する。最初は軽量な `qwen3:8b` を推奨する。
+
+   ```powershell
+   ollama pull qwen3:8b
+   ```
+
+3. Ollamaが起動していることを確認する。
+
+   ```powershell
+   ollama list
+   Invoke-WebRequest -UseBasicParsing http://localhost:11434/api/tags
+   ```
+
+4. プロジェクト直下の `.env` に以下を設定する。`host.docker.internal` はDocker Desktopから
+   ホストOSへ接続するための名前である。
+
+   ```env
+   LLM_PROVIDER=local
+   LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
+   LOCAL_LLM_API_KEY=
+   LOCAL_LLM_MODEL_LOW=qwen3:8b
+   LOCAL_LLM_MODEL_MID=qwen3:8b
+   LOCAL_LLM_MODEL_HIGH=qwen3:8b
+   ```
+
+   ずんだもん・四国めたんの動画を作る場合も、台本と企画の生成はこの設定に従う。
+   VOICEVOXの設定とは独立しているため、`TTS_PROVIDER=voicevox` はそのまま併用できる。
+
+5. 設定をコンテナへ反映する。
+
+   ```powershell
+   .\scripts\dev.ps1 up
+   ```
+
+6. ブラウザで `http://localhost:8000/settings` を開き、`LLM_PROVIDER` が `local` であることを
+   確認する。続けて通常どおり企画、台本、動画プロジェクトを作成する。
+
+### アプリをDockerなしで直接起動する場合
+
+`uv run uvicorn ...` のようにアプリ自身もホストOSで起動する場合だけ、次の設定を使う。
 
 ```env
 LLM_PROVIDER=local
 LOCAL_LLM_BASE_URL=http://localhost:11434/v1
 LOCAL_LLM_API_KEY=
 LOCAL_LLM_MODEL_LOW=qwen3:8b
-LOCAL_LLM_MODEL_MID=qwen3:32b
-LOCAL_LLM_MODEL_HIGH=qwen3:32b
+LOCAL_LLM_MODEL_MID=qwen3:8b
+LOCAL_LLM_MODEL_HIGH=qwen3:8b
 ```
 
-LM Studio を使う場合は「Local Server」機能を有効化し、`LOCAL_LLM_BASE_URL` を
-`http://localhost:1234/v1` に変更する(モデル名はLM Studioでロードしたモデルの識別子)。
-vLLM の場合は `--api-key` を指定していれば `LOCAL_LLM_API_KEY` にも設定する。
+LM Studio を使う場合は「Local Server」機能を有効化し、ポートに応じて
+`LOCAL_LLM_BASE_URL` を設定する。Docker DesktopでLM StudioをホストOSに起動する場合は、
+たとえば `http://host.docker.internal:1234/v1` となる。vLLM の場合は `--api-key` を
+指定していれば `LOCAL_LLM_API_KEY` にも設定する。
 
 ## ポリシー別ルーティング(ハイブリッド構成)
 
@@ -65,7 +148,7 @@ LLM_PROVIDER_LOW=local
 LLM_PROVIDER_MID=local
 LLM_PROVIDER_HIGH=anthropic
 
-LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1
 LOCAL_LLM_MODEL_LOW=qwen3:8b
 LOCAL_LLM_MODEL_MID=qwen3:32b
 
@@ -89,6 +172,15 @@ LLM_MODEL_HIGH=claude-opus-4-8
   (Ollama/LM Studio は通常キー不要)。
 - コストは常に `0` として `UsageRecord`/`BudgetLedger` に記録されるため、ローカル実行分は
   予算消費に影響しない(トークン数・レイテンシは引き続き記録される)。
+
+## よくある接続エラー
+
+| 症状 | 確認・対処 |
+|---|---|
+| `Connection refused` / タイムアウト | OllamaがホストOSで起動しているか、`Invoke-WebRequest http://localhost:11434/api/tags` で確認する。Docker運用では `LOCAL_LLM_BASE_URL` が `host.docker.internal:11434/v1` になっているか確認する。 |
+| `model not found` | `ollama list` でモデル名を確認し、`.env` の `LOCAL_LLM_MODEL_LOW` / `MID` / `HIGH` を一致させる。必要なら `ollama pull <モデル名>` を実行する。 |
+| 台本生成が遅い / タイムアウト | まず `qwen3:8b` など小さいモデルを3ポリシーに設定する。必要に応じて `LOCAL_LLM_TIMEOUT_SECONDS` を延長する。 |
+| 構造化出力のエラー | 小さいモデルではJSON形式が崩れることがある。再試行しても続く場合は、より性能の高いモデルに変えるか、人間確認を前提にFake/別プロバイダーで動作を切り分ける。 |
 
 ## 関連ドキュメント
 

@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+CharacterId = Literal["zundamon", "metan", "tsumugi"]
+CharacterEmotion = Literal["neutral", "happy", "serious", "surprised"]
+
+
+class ScriptDialogueLine(BaseModel):
+    """立ち絵解説用のセリフ。話者・感情を音声と画面演出に使う。"""
+
+    speaker: CharacterId
+    text: str = Field(min_length=1)
+    emotion: CharacterEmotion = "neutral"
 
 
 class ScriptSection(BaseModel):
@@ -10,6 +23,7 @@ class ScriptSection(BaseModel):
     narration: str
     visual_instruction: str
     evidence_ids: list[str] = Field(default_factory=list)
+    dialogue: list[ScriptDialogueLine] = Field(default_factory=list)
 
 
 class ScriptContent(BaseModel):

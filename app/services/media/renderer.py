@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import structlog
@@ -66,6 +66,15 @@ class RenderInputs:
     input_checksum: str
     endcard_enabled: bool = True
     endcard_duration_seconds: float = DEFAULT_ENDCARD_DURATION_SECONDS
+    scene_frames: list[SceneFrame] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SceneFrame:
+    """立ち絵演出用の静止フレームと表示秒数。"""
+
+    path: Path
+    duration_seconds: float
 
 
 @dataclass(frozen=True)
@@ -93,7 +102,8 @@ def _escape_subtitles_filter_path(path: Path) -> str:
     return normalized
 
 
-def _find_japanese_font() -> str | None:
+def find_japanese_font() -> str | None:
+    """利用可能な日本語フォントのパスを返す。"""
     for candidate in _JAPANESE_FONT_CANDIDATES:
         if Path(candidate).exists():
             return candidate
@@ -133,7 +143,7 @@ def generate_endcard_image(
     image = Image.new("RGB", (width, height), color=(15, 15, 25))
     draw = ImageDraw.Draw(image)
 
-    font_path = _find_japanese_font()
+    font_path = find_japanese_font()
     try:
         title_font = ImageFont.truetype(font_path, 64) if font_path else ImageFont.load_default()
         channel_font = ImageFont.truetype(font_path, 36) if font_path else ImageFont.load_default()
@@ -235,6 +245,46 @@ def _build_video_track(
         vf,
         "-t",
         f"{duration_seconds:.3f}",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        "-an",
+        str(output),
+    ]
+    _run_ffmpeg(ffmpeg_path, args, timeout=timeout)
+
+
+def _build_scene_video_track(
+    ffmpeg_path: str, scene_frames: list[SceneFrame], output: Path, *, timeout: float
+) -> None:
+    """concat demuxerで立ち絵フレーム列を連結し、映像トラックを作る。"""
+    if not scene_frames:
+        raise RenderError("scene_framesは空にできません")
+
+    valid_frames = [frame for frame in scene_frames if frame.duration_seconds > 0]
+    if not valid_frames:
+        raise RenderError("有効なscene_framesがありません")
+
+    concat_list = output.parent / "scene_frames.ffconcat"
+    concat_lines = ["ffconcat version 1.0"]
+    for frame in valid_frames:
+        normalized_path = str(frame.path.resolve()).replace("\\", "/")
+        escaped_path = normalized_path.replace("'", r"'\''")
+        concat_lines.append(f"file '{escaped_path}'")
+        concat_lines.append(f"duration {frame.duration_seconds:.6f}")
+    concat_list.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+
+    args = [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-vf",
+        f"fps={VIDEO_FPS},format=yuv420p",
         "-pix_fmt",
         "yuv420p",
         "-c:v",
@@ -380,13 +430,16 @@ def _render_impl(
     audio_duration = probe_video(audio_full).duration_seconds
 
     video_main = work_dir / "video_main.mp4"
-    _build_video_track(
-        ffmpeg_path,
-        inputs.background_image_path,
-        video_main,
-        duration_seconds=audio_duration,
-        timeout=timeout,
-    )
+    if inputs.scene_frames:
+        _build_scene_video_track(ffmpeg_path, inputs.scene_frames, video_main, timeout=timeout)
+    else:
+        _build_video_track(
+            ffmpeg_path,
+            inputs.background_image_path,
+            video_main,
+            duration_seconds=audio_duration,
+            timeout=timeout,
+        )
 
     muxed_main = work_dir / "muxed_main.mp4"
     _mux_with_subtitles(

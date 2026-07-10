@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.core.config import get_settings
 from app.providers.llm.base import StructuredLLMResult, get_model_pricing
 
 Generator = Callable[[bytes, str, str, type[BaseModel]], dict]
@@ -64,6 +65,33 @@ def _generate_script_content(
 ) -> dict:
     """`generate_script` operation用の意味のある日本語ダミー台本(仕様§10構造)。"""
     suffix = seed.hex()[:6]
+    second_section_dialogue = [
+        {
+            "speaker": "metan",
+            "text": "確認できた根拠をもとに、要点を順番に説明します。",
+            "emotion": "serious",
+        },
+        {
+            "speaker": "zundamon",
+            "text": "難しいところも、ひとつずつ見ていけば大丈夫なのだ。",
+            "emotion": "happy",
+        },
+    ]
+    configured_cast = {
+        name.strip() for name in get_settings().DIALOGUE_CAST.split(",") if name.strip()
+    }
+    dialogue_enabled = get_settings().DIALOGUE_SCRIPT_ENABLED
+    if "tsumugi" in configured_cast:
+        second_section_dialogue.append(
+            {
+                "speaker": "tsumugi",
+                "text": "ここは覚えておくと、次の判断がずっと楽になりますよ。",
+                "emotion": "neutral",
+            }
+        )
+    if not dialogue_enabled:
+        second_section_dialogue = []
+
     return {
         "title_candidates": [
             f"知らないと損する話 #{suffix}",
@@ -79,12 +107,27 @@ def _generate_script_content(
                 "narration": "今日のテーマについて、まず全体像を整理します。",
                 "visual_instruction": "タイトルテロップとテーマ画像を表示する。",
                 "evidence_ids": [],
+                "dialogue": [
+                    {
+                        "speaker": "zundamon",
+                        "text": "今日はテーマの全体像を一緒に整理するのだ。",
+                        "emotion": "happy",
+                    },
+                    {
+                        "speaker": "metan",
+                        "text": "まず結論から確認していきましょう。",
+                        "emotion": "neutral",
+                    },
+                ]
+                if dialogue_enabled
+                else [],
             },
             {
                 "heading": "本編",
                 "narration": "リサーチで確認できた事実をもとに要点を解説します。",
                 "visual_instruction": "根拠となる出典を画面下部に表示する。",
                 "evidence_ids": [],
+                "dialogue": second_section_dialogue,
             },
         ],
         "conclusion": "今回の内容を振り返り、次に取るべき行動をまとめます。",

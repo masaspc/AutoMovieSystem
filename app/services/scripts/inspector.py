@@ -89,6 +89,10 @@ def inspect_script(
 
     for idx, section in enumerate(sections):
         narration = section.get("narration") or ""
+        dialogue_text = "\n".join(
+            str(item.get("text") or "") for item in section.get("dialogue") or []
+        )
+        spoken_text = dialogue_text or narration
         evidence_ids = section.get("evidence_ids") or []
 
         for eid in evidence_ids:
@@ -101,8 +105,8 @@ def inspect_script(
                     )
                 )
 
-        has_important_number = bool(_IMPORTANT_NUMBER_PATTERN.search(narration))
-        has_any_number = bool(_ANY_NUMBER_PATTERN.search(narration))
+        has_important_number = bool(_IMPORTANT_NUMBER_PATTERN.search(spoken_text))
+        has_any_number = bool(_ANY_NUMBER_PATTERN.search(spoken_text))
         if not evidence_ids and has_important_number:
             findings.append(
                 Finding(
@@ -121,7 +125,7 @@ def inspect_script(
             )
 
         for word in ng_words:
-            if word in narration:
+            if word in spoken_text:
                 findings.append(
                     Finding(
                         "prohibited_expression",
@@ -130,7 +134,7 @@ def inspect_script(
                     )
                 )
 
-        for sentence in _split_sentences(narration):
+        for sentence in _split_sentences(spoken_text):
             if len(sentence) > _MAX_SENTENCE_LENGTH:
                 findings.append(
                     Finding(
@@ -141,7 +145,7 @@ def inspect_script(
                 )
 
         for pattern in _SECRET_PATTERNS:
-            if pattern.search(narration):
+            if pattern.search(spoken_text):
                 findings.append(
                     Finding(
                         "possible_secret_leak",

@@ -10,6 +10,8 @@ def test_help_page_returns_200_with_key_sections(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert "使い方ガイド" in response.text
+    assert "立ち絵掛け合い動画を作る準備" in response.text
+    assert "VOICEVOXと立ち絵レンダリングを有効にする" in response.text
     assert "全体の流れ" in response.text
     assert "YouTube" in response.text
     assert "よくある詰まりどころ" in response.text

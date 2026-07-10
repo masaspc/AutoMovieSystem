@@ -22,6 +22,7 @@
 ```
 
 これで `uv sync` が実行され、`pyproject.toml` 指定の Python 3.12.13 と全依存パッケージがインストール。
+このコマンドは `.env` を作成しない。次のStep 3で明示的に作成する。
 
 ### macOS / Linux
 
@@ -162,6 +163,9 @@ SECRET_ENCRYPTION_KEY=Ky_4HvL5z...Wc=
 ```env
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/auto_movie_system
 CELERY_TASK_ALWAYS_EAGER=false
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=<強力なパスワード>
+SECRET_ENCRYPTION_KEY=<Fernetキー>
 ```
 
 起動:
@@ -182,9 +186,18 @@ compose が postgres / redis / app / worker / beat を起動(ヘルスチェッ�
 ./scripts/dev.ps1 demo
 ```
 
-- SQLite をデータベースとして使用(`.env` の `DATABASE_URL` を尊重)
+- 既定では安全のため `.env` の `DATABASE_URL` を使わず、SQLiteの `demo.db` を使用
 - Celery eager モードで企画スコアリング → 台本生成 → 動画レンダリング → レビュー → アップロード(Fake) → 指標同期 → Insight生成 を一気に実行
 - 結果サマリーを表示(Topic数、Script ID、動画パス、ステータス等)
+
+管理画面が接続するDB(例: `local.db` またはComposeのPostgreSQL)にデモ結果を残す場合だけ、
+明示的に既存の `DATABASE_URL` を使う:
+
+```powershell
+$env:DEMO_USE_CURRENT_DB="1"
+./scripts/dev.ps1 demo
+Remove-Item Env:DEMO_USE_CURRENT_DB
+```
 
 **期待結果**: VideoProject status = `FEEDBACK_GENERATED` / approval有 / publication有 / metrics_synced > 0
 
@@ -195,6 +208,8 @@ uv run uvicorn app.main:app --reload
 ```
 
 ブラウザで http://localhost:8000/dashboard → ダッシュボード表示確認。
+Compose環境では `APP_ENV=production` のため、`.env` の `ADMIN_USERNAME` /
+`ADMIN_PASSWORD` でHTTP Basic認証を行う。
 
 ### テスト実行
 

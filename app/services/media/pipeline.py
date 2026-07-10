@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.paths import resolve_generated_path
 from app.models.asset import (
@@ -29,7 +30,7 @@ from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.tts.base import TTSProvider
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
-from app.services.media import renderer, subtitles
+from app.services.media import characters, dialogue, renderer, subtitles
 from app.services.media.probe import inspect_rendered_video
 from app.services.state_machine import transition
 
@@ -182,7 +183,7 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
 
 
 # ---------------------------------------------------------------------------
-# synthesize_audio: セクションごとにTTS合成 + Asset登録。
+# synthesize_audio: セリフごとにTTS合成 + Asset登録。
 # ---------------------------------------------------------------------------
 
 
@@ -206,20 +207,23 @@ async def synthesize_audio(
     provider: TTSProvider,
     voice: str = DEFAULT_VOICE,
 ) -> list[Asset]:
-    """Scriptの各sectionをTTSで音声化しAsset登録する(セクションごとに冪等)。"""
+    """Scriptの各セリフをTTSで音声化しAsset登録する(セリフごとに冪等)。"""
     project = _get_video_project(session, video_project_id)
     script = _get_script(session, project)
 
-    sections = (script.body or {}).get("sections") or []
-    if not sections:
-        raise PipelinePreconditionError(f"Script({script.id})にsectionsがありません")
+    settings = get_settings()
+    dialogue_enabled = dialogue.dialogue_script_enabled(settings)
+    speech_lines = dialogue.extract_speech_lines(script.body or {}, settings=settings)
+    if not speech_lines:
+        raise PipelinePreconditionError(f"Script({script.id})に音声化できるセリフがありません")
 
     assets: list[Asset] = []
-    for index, section in enumerate(sections):
-        narration = section.get("narration", "")
+    for line in speech_lines:
+        index = line.index
+        narration = line.text
         idempotency_key = build_section_idempotency_key(video_project_id, index, narration)
         text_hash = hashlib.sha256(narration.encode("utf-8")).hexdigest()
-        relative_path = f"videos/{video_project_id}/audio/section_{index:02d}_{text_hash[:12]}.wav"
+        relative_path = f"videos/{video_project_id}/audio/line_{index:02d}_{text_hash[:12]}.wav"
         output_path = resolve_generated_path(relative_path)
 
         async def _do_synthesize(
@@ -227,6 +231,9 @@ async def synthesize_audio(
             *,
             _index: int = index,
             _narration: str = narration,
+            _speaker: str = line.speaker,
+            _emotion: str = line.emotion,
+            _section_index: int = line.section_index,
             _output_path: Path = output_path,
             _idempotency_key: str = idempotency_key,
         ) -> Asset:
@@ -237,7 +244,13 @@ async def synthesize_audio(
             else:
                 result = await provider.synthesize(
                     text=_narration,
-                    voice=voice,
+                    voice=(
+                        _speaker
+                        if dialogue_enabled
+                        and settings.TTS_PROVIDER == "voicevox"
+                        and voice == DEFAULT_VOICE
+                        else voice
+                    ),
                     output_path=_output_path,
                     idempotency_key=_idempotency_key,
                 )
@@ -253,7 +266,11 @@ async def synthesize_audio(
                 file_path=_output_path,
                 checksum=checksum,
                 meta={
-                    "section_index": _index,
+                    "line_index": _index,
+                    "section_index": _section_index,
+                    "source_section_index": _section_index,
+                    "speaker": _speaker,
+                    "emotion": _emotion,
                     "duration_seconds": duration_seconds,
                     "sample_rate": sample_rate,
                 },
@@ -281,9 +298,7 @@ async def synthesize_audio(
                 .one_or_none()
             )
             if match is None:  # pragma: no cover - 理論上到達しない防御的分岐
-                raise RuntimeError(
-                    f"JobRun succeeded but Asset not found for section_index={index}"
-                )
+                raise RuntimeError(f"JobRun succeeded but Asset not found for line_index={index}")
             assets.append(match)
         else:
             assert job_result.result is not None
@@ -302,13 +317,25 @@ def build_render_idempotency_key(video_project_id: str, input_checksum: str) -> 
     return f"render_video:{video_project_id}:{input_checksum}"
 
 
-def _fetch_ordered_audio_assets(session: Session, video_project_id: str) -> list[Asset]:
+def _fetch_ordered_audio_assets(
+    session: Session, video_project_id: str, *, expected_line_count: int
+) -> list[Asset]:
+    expected_roles = {asset_role_for_audio_section(index) for index in range(expected_line_count)}
     assets = (
         session.query(Asset)
-        .filter(Asset.video_project_id == video_project_id, Asset.asset_type == "audio")
+        .filter(
+            Asset.video_project_id == video_project_id,
+            Asset.asset_type == "audio",
+            Asset.role.in_(expected_roles),
+        )
         .all()
     )
-    return sorted(assets, key=lambda a: (a.meta or {}).get("section_index", 0))
+    return sorted(
+        assets,
+        key=lambda asset: (asset.meta or {}).get(
+            "line_index", (asset.meta or {}).get("section_index", 0)
+        ),
+    )
 
 
 def _fetch_background_asset(session: Session, video_project_id: str) -> Asset:
@@ -335,6 +362,7 @@ def _compute_render_input_checksum(
     aspect_ratio: str,
     endcard_enabled: bool,
     endcard_duration_seconds: float,
+    character_fingerprint: str,
 ) -> str:
     """script本文+各Assetのchecksum+レンダリング設定からレンダリング入力のハッシュを計算する。"""
     hasher = hashlib.sha256()
@@ -342,6 +370,7 @@ def _compute_render_input_checksum(
     for asset in audio_assets:
         hasher.update(asset.checksum.encode("utf-8"))
     hasher.update(background_asset.checksum.encode("utf-8"))
+    hasher.update(character_fingerprint.encode("utf-8"))
     hasher.update(
         f"|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
         f"endcard_duration={endcard_duration_seconds}".encode()
@@ -364,20 +393,30 @@ def render_video(
     project = _get_video_project(session, video_project_id)
     script = _get_script(session, project)
 
-    sections = (script.body or {}).get("sections") or []
-    if not sections:
-        raise PipelinePreconditionError(f"Script({script.id})にsectionsがありません")
+    settings = get_settings()
+    dialogue_enabled = dialogue.dialogue_script_enabled(settings)
+    speech_lines = dialogue.extract_speech_lines(script.body or {}, settings=settings)
+    if not speech_lines:
+        raise PipelinePreconditionError(f"Script({script.id})に音声化できるセリフがありません")
 
-    audio_assets = _fetch_ordered_audio_assets(session, video_project_id)
-    if len(audio_assets) != len(sections):
+    audio_assets = _fetch_ordered_audio_assets(
+        session, video_project_id, expected_line_count=len(speech_lines)
+    )
+    if len(audio_assets) != len(speech_lines):
         raise PipelinePreconditionError(
-            f"音声Asset数({len(audio_assets)})がsection数({len(sections)})と一致しません"
+            f"音声Asset数({len(audio_assets)})がセリフ数({len(speech_lines)})と一致しません"
             "(synthesize_audio未実行または不完全)"
         )
     background_asset = _fetch_background_asset(session, video_project_id)
 
     endcard_enabled = True
     endcard_duration_seconds = renderer.DEFAULT_ENDCARD_DURATION_SECONDS
+    character_render_enabled = dialogue_enabled and settings.CHARACTER_RENDER_ENABLED
+    character_fingerprint = (
+        characters.character_assets_fingerprint(settings, speech_lines)
+        if character_render_enabled
+        else "characters-disabled"
+    )
 
     input_checksum = _compute_render_input_checksum(
         script,
@@ -386,6 +425,7 @@ def render_video(
         aspect_ratio=project.aspect_ratio,
         endcard_enabled=endcard_enabled,
         endcard_duration_seconds=endcard_duration_seconds,
+        character_fingerprint=character_fingerprint,
     )
     idempotency_key = build_render_idempotency_key(video_project_id, input_checksum)
 
@@ -393,7 +433,8 @@ def render_video(
         section_durations = [
             float((a.meta or {}).get("duration_seconds", 0.0)) for a in audio_assets
         ]
-        cues = subtitles.build_cues(sections, section_durations=section_durations)
+        subtitle_sections = [{"narration": line.text} for line in speech_lines]
+        cues = subtitles.build_cues(subtitle_sections, section_durations=section_durations)
         srt_text = subtitles.render_srt(cues)
         vtt_text = subtitles.render_vtt(cues)
 
@@ -407,6 +448,18 @@ def render_video(
         srt_path.write_text(srt_text, encoding="utf-8")
         vtt_path.write_text(vtt_text, encoding="utf-8")
 
+        scene_frames = (
+            characters.build_scene_frames(
+                background=Path(background_asset.file_path),
+                lines=speech_lines,
+                durations=section_durations,
+                settings=settings,
+                output_dir=srt_path.parent / f"scenes_{input_checksum[:16]}",
+            )
+            if character_render_enabled
+            else []
+        )
+
         render_inputs = renderer.RenderInputs(
             video_project_id=video_project_id,
             aspect_ratio=project.aspect_ratio,
@@ -418,11 +471,12 @@ def render_video(
             input_checksum=input_checksum,
             endcard_enabled=endcard_enabled,
             endcard_duration_seconds=endcard_duration_seconds,
+            scene_frames=scene_frames,
         )
 
         try:
             result = renderer.render_video(render_inputs)
-        except (renderer.RenderError, NotImplementedError) as exc:
+        except (characters.CharacterAssetError, renderer.RenderError, NotImplementedError) as exc:
             transition(project, "RENDER_FAILED")
             session.flush()
             raise PipelineRenderError(f"レンダリングに失敗しました: {exc}") from exc

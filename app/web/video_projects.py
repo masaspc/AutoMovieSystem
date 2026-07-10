@@ -16,7 +16,7 @@ from app.core.logging import get_logger
 from app.core.paths import resolve_generated_path
 from app.db.session import get_db
 from app.models.approval import Approval
-from app.models.asset import Asset
+from app.models.asset import Asset, asset_role_for_audio_section
 from app.models.comment import Comment
 from app.models.evidence import Evidence
 from app.models.insight import Insight
@@ -30,6 +30,7 @@ from app.providers.llm.factory import get_llm_provider
 from app.providers.tts.factory import get_tts_provider
 from app.providers.youtube.factory import get_youtube_provider
 from app.services.jobs import JobInProgressError
+from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
 from app.services.media.pipeline import (
     ScriptNotFoundError,
     VideoProjectNotFoundError,
@@ -90,13 +91,18 @@ def _next_pipeline_action(db: Session, project: VideoProject) -> tuple[str, str]
         return "素材準備", "prepare-assets"
     if project.status == "ASSETS_READY":
         script = db.get(Script, project.script_id) if project.script_id else None
-        sections = (script.body or {}).get("sections") if script else []
+        speech_lines = extract_speech_lines(script.body or {}) if script else []
+        expected_roles = [asset_role_for_audio_section(index) for index in range(len(speech_lines))]
         audio_count = (
             db.query(Asset)
-            .filter(Asset.video_project_id == project.id, Asset.asset_type == "audio")
+            .filter(
+                Asset.video_project_id == project.id,
+                Asset.asset_type == "audio",
+                Asset.role.in_(expected_roles),
+            )
             .count()
         )
-        if audio_count < len(sections or []):
+        if audio_count < len(speech_lines):
             return "音声合成", "synthesize-audio"
         return "レンダリング", "render"
     if project.status == "VIDEO_RENDERED":
@@ -183,6 +189,7 @@ def video_project_detail(video_project_id: str, request: Request, db: DbSession)
             "insights": insights,
             "media_available": media_available,
             "next_action": next_action,
+            "dialogue_script_enabled": dialogue_script_enabled(),
             "csrf_token": csrf_token,
         },
     )

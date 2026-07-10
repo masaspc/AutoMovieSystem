@@ -14,6 +14,7 @@ from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
 from app.schemas.content_review import ContentReviewResult
 from app.services.llm_gateway import call_llm
+from app.services.media.dialogue import extract_speech_lines
 from app.services.reviews.findings import SEVERITY_WARNING, Finding
 from app.services.scripts.inspector import inspect_script_with_history
 
@@ -50,7 +51,9 @@ def _build_prompts(script: Script) -> tuple[str, str]:
         "問題がなければ findings は空配列、passed は true にしてください。"
     )
     body = script.body or {}
-    sections_text = "\n".join(f"- {s.get('narration', '')}" for s in body.get("sections") or [])
+    sections_text = "\n".join(
+        f"- {line.speaker}: {line.text}" for line in extract_speech_lines(body)
+    )
     user_prompt = (
         f"動画タイトル: {script.title}\n"
         f"説明文: {body.get('description', '')}\n"
