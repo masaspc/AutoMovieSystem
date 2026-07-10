@@ -18,13 +18,14 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, mask_secrets_in_text
+from app.core.timeutil import utcnow_naive
 from app.models.job_run import JobRun
 
 logger = get_logger(__name__)
@@ -48,7 +49,7 @@ class JobResult[T]:
 
 def _lease_active(job_run: JobRun, lease_timeout_seconds: float) -> bool:
     lease_deadline = job_run.started_at + timedelta(seconds=lease_timeout_seconds)
-    return lease_deadline > datetime.utcnow()
+    return lease_deadline > utcnow_naive()
 
 
 def _resolve_lease_timeout(lease_timeout_seconds: float | None) -> float:
@@ -115,7 +116,7 @@ def run_idempotent[T](
         job_run = existing
         job_run.attempt += 1
         job_run.status = "started"
-        job_run.started_at = datetime.utcnow()
+        job_run.started_at = utcnow_naive()
         job_run.finished_at = None
         job_run.last_error = None
         job_run.trace_id = trace_id
@@ -155,7 +156,7 @@ def run_idempotent[T](
         result = fn()
     except Exception as exc:
         job_run.status = "failed"
-        job_run.finished_at = datetime.utcnow()
+        job_run.finished_at = utcnow_naive()
         # シークレットを含めないよう、マスキングした例外メッセージのみを切り詰めて保存する。
         job_run.last_error = mask_secrets_in_text(str(exc))[:_MAX_ERROR_LENGTH]
         session.flush()
@@ -171,7 +172,7 @@ def run_idempotent[T](
         raise
 
     job_run.status = "succeeded"
-    job_run.finished_at = datetime.utcnow()
+    job_run.finished_at = utcnow_naive()
     session.flush()
     logger.info("job_run_succeeded", job_type=job_type, idempotency_key=idempotency_key)
     return JobResult(status="succeeded", job_run=job_run, result=result)
@@ -224,7 +225,7 @@ async def run_idempotent_async[T](
         job_run = existing
         job_run.attempt += 1
         job_run.status = "started"
-        job_run.started_at = datetime.utcnow()
+        job_run.started_at = utcnow_naive()
         job_run.finished_at = None
         job_run.last_error = None
         job_run.trace_id = trace_id
@@ -263,7 +264,7 @@ async def run_idempotent_async[T](
         result = await fn(job_run)
     except Exception as exc:
         job_run.status = "failed"
-        job_run.finished_at = datetime.utcnow()
+        job_run.finished_at = utcnow_naive()
         job_run.last_error = mask_secrets_in_text(str(exc))[:_MAX_ERROR_LENGTH]
         session.flush()
         exc.idempotency_key = idempotency_key  # type: ignore[attr-defined]
@@ -276,7 +277,7 @@ async def run_idempotent_async[T](
         raise
 
     job_run.status = "succeeded"
-    job_run.finished_at = datetime.utcnow()
+    job_run.finished_at = utcnow_naive()
     session.flush()
     logger.info("job_run_succeeded", job_type=job_type, idempotency_key=idempotency_key)
     return JobResult(status="succeeded", job_run=job_run, result=result)
@@ -322,7 +323,7 @@ def record_failure_in_new_session(
         else:
             job_run.status = "failed"
 
-        job_run.finished_at = datetime.utcnow()
+        job_run.finished_at = utcnow_naive()
         job_run.last_error = mask_secrets_in_text(str(error))[:_MAX_ERROR_LENGTH]
         if trace_id is not None:
             job_run.trace_id = trace_id

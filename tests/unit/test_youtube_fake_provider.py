@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+from app.core.timeutil import utcnow_naive
 from app.providers.youtube.base import UploadRequest
 from app.providers.youtube.factory import get_youtube_provider
 from app.providers.youtube.fake import FakeYouTubeProvider, FakeYouTubeProviderStore
@@ -113,7 +114,7 @@ def test_seed_statistics_and_comments() -> None:
         view_count=100,
         like_count=10,
         comment_count=2,
-        collected_at=datetime.utcnow(),
+        collected_at=utcnow_naive(),
     )
     provider.seed_statistics(stats)
     provider.seed_comments(
@@ -123,7 +124,7 @@ def test_seed_statistics_and_comments() -> None:
                 youtube_comment_id="c-1",
                 author_display_name="viewer",
                 text="良い動画",
-                published_at=datetime.utcnow(),
+                published_at=utcnow_naive(),
             )
         ],
     )

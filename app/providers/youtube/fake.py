@@ -17,6 +17,7 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.core.timeutil import utcnow_naive
 from app.providers.youtube.base import (
     CommentData,
     UploadedVideoInfo,
@@ -86,7 +87,7 @@ class FakeYouTubeProvider:
             scheduled_at=request.scheduled_at,
             made_for_kids=request.made_for_kids,
             contains_synthetic_media=request.contains_synthetic_media,
-            created_at=datetime.utcnow(),
+            created_at=utcnow_naive(),
         )
         self.store.videos[youtube_video_id] = stored
         return UploadResult(
@@ -122,7 +123,7 @@ class FakeYouTubeProvider:
             view_count=0,
             like_count=0,
             comment_count=0,
-            collected_at=datetime.utcnow(),
+            collected_at=utcnow_naive(),
         )
 
     async def list_comments(

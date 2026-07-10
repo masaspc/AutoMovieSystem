@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 REVIEWER_TYPES = ("machine", "content", "human")
@@ -42,4 +43,4 @@ class Review(Base):
     # findings のうち severity=="blocking" のみを抜粋したもの(ゲート判定を高速化するため)。
     blocking_findings: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)

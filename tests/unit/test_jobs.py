@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
+from app.core.timeutil import utcnow_naive
 from app.models.job_run import JobRun
 from app.services.jobs import JobResult, run_idempotent
 
@@ -94,7 +95,7 @@ def test_run_idempotent_reruns_stale_started_job(db_session: Session) -> None:
         status="started",
         attempt=1,
         # lease(デフォルト3600秒)を超過させ、クラッシュ残骸(stale)として扱わせる。
-        started_at=datetime.utcnow() - timedelta(hours=2),
+        started_at=utcnow_naive() - timedelta(hours=2),
     )
     db_session.add(stale)
     db_session.flush()
@@ -128,7 +129,7 @@ def test_run_idempotent_returns_in_progress_when_lease_active(db_session: Sessio
         idempotency_key="demo:t-4",
         status="started",
         attempt=1,
-        started_at=datetime.utcnow(),
+        started_at=utcnow_naive(),
     )
     db_session.add(active)
     db_session.flush()

@@ -37,6 +37,14 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(secret, salt=_CSRF_SALT)
 
 
+def _cookie_secure() -> bool:
+    """CSRF CookieのSecure属性。`CSRF_COOKIE_SECURE` 明示設定が最優先、未設定なら自動判定。"""
+    override = get_settings().CSRF_COOKIE_SECURE
+    if override is not None:
+        return override
+    return not _is_dev_environment()
+
+
 def set_csrf_cookie(response: object, token: str) -> None:
     """CSRF Cookieを共通属性(httponly/samesite=strict、非dev環境はsecure)で設定する。"""
     response.set_cookie(  # type: ignore[attr-defined]
@@ -44,7 +52,7 @@ def set_csrf_cookie(response: object, token: str) -> None:
         token,
         httponly=True,
         samesite="strict",
-        secure=not _is_dev_environment(),
+        secure=_cookie_secure(),
     )
 
 

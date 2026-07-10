@@ -10,6 +10,7 @@ from functools import lru_cache
 from glob import glob
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,6 +53,19 @@ class Settings(BaseSettings):
     # APP_ENV が development/test の場合のみ認証をスキップする(それ以外はfail-closedで401)。
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = ""
+
+    # CSRF CookieのSecure属性。未設定(None)なら自動: development/test以外でSecure付与。
+    # TLS終端なしのLAN(http://<IP>:8000)でproduction運用する場合のみ false を明示する
+    # (ブラウザはlocalhost以外の平文HTTPでSecure Cookieを保存しないため)。
+    CSRF_COOKIE_SECURE: bool | None = None
+
+    @field_validator("CSRF_COOKIE_SECURE", mode="before")
+    @classmethod
+    def _empty_csrf_cookie_secure_as_none(cls, value: object) -> object:
+        # .env の `CSRF_COOKIE_SECURE=`(空文字)を「未設定=自動判定」として扱う。
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     DATABASE_URL: str = "sqlite:///./local.db"
     REDIS_URL: str = "redis://localhost:6379/0"

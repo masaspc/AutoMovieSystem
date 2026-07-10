@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
 VERIFICATION_STATUSES = ("unverified", "verified", "disputed")
@@ -22,16 +23,14 @@ class Evidence(Base):
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     source_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    retrieved_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
-    )
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     claim: Mapped[str] = mapped_column(String, nullable=False)
     excerpt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     verification_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="unverified"
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
     )
