@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -33,6 +34,18 @@ from app.services.orchestration import (
 )
 
 logger = get_logger(__name__)
+
+_ALLOWED_BENCHMARK_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+
+
+def _validate_benchmark_url(url: str) -> str:
+    """ベンチマーク対象をYouTubeのHTTPS/HTTP URLに限定する。"""
+    normalized = url.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or parsed.hostname not in _ALLOWED_BENCHMARK_HOSTS:
+        raise ValueError("ベンチマークURLにはYouTubeのhttp(s) URLを指定してください")
+    return normalized
+
 
 # 量産バッチの対象となる「まだ制作が完了していない」プロジェクト状態。
 # これ以降(レビュー合格〜公開)へ進んだ企画はバッチ対象から外す。
@@ -179,6 +192,7 @@ def register_benchmark_video(
     format_tags: list[str] | None = None,
 ) -> tuple[BenchmarkVideo, bool]:
     """ベンチマーク動画のget-or-create(UNIQUE(channel_id, url))。(entity, created)を返す。"""
+    url = _validate_benchmark_url(url)
     existing = (
         session.query(BenchmarkVideo)
         .filter(BenchmarkVideo.channel_id == channel_id, BenchmarkVideo.url == url)

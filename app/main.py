@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.router import router as api_router
 from app.core.auth import require_admin
+from app.core.config import Settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import get_db
 from app.web.router import router as web_router
@@ -27,8 +28,16 @@ logger = get_logger(__name__)
 
 def create_app() -> FastAPI:
     configure_logging()
+    # 起動時の公開ドキュメント設定だけは、リクエスト側の設定キャッシュを汚さずに読む。
+    settings = Settings()
+    is_development = settings.APP_ENV in ("development", "test")
 
-    app = FastAPI(title="Auto Movie System")
+    app = FastAPI(
+        title="Auto Movie System",
+        docs_url="/docs" if is_development else None,
+        redoc_url="/redoc" if is_development else None,
+        openapi_url="/openapi.json" if is_development else None,
+    )
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     # CSS更新がブラウザのヒューリスティックキャッシュで反映されない問題への対策:

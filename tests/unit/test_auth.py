@@ -52,6 +52,19 @@ def test_production_like_env_without_password_returns_401(
     assert response.headers["www-authenticate"] == "Basic"
 
 
+def test_production_disables_openapi_and_interactive_docs(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ADMIN_PASSWORD", "correct-horse-battery-staple")
+    get_settings.cache_clear()
+
+    with _client_for(db_session) as client:
+        assert client.get("/docs").status_code == 404
+        assert client.get("/redoc").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
+
+
 def test_wrong_credentials_returns_401(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -34,8 +34,30 @@ from app.providers.llm.base import (
     get_model_pricing,
     resolve_model_id,
 )
+from app.providers.llm.local_openai import resolve_local_model_id
 
 logger = get_logger(__name__)
+
+
+def _resolve_provider_name(model_policy: str, settings: Settings) -> str:
+    """model_policy に対応する実際のプロバイダー名を設定から解決する。"""
+    mapping = {
+        "low": settings.LLM_PROVIDER_LOW or settings.LLM_PROVIDER,
+        "mid": settings.LLM_PROVIDER_MID or settings.LLM_PROVIDER,
+        "high": settings.LLM_PROVIDER_HIGH or settings.LLM_PROVIDER,
+    }
+    try:
+        return mapping[model_policy]
+    except KeyError as exc:
+        raise ValueError(f"Unknown model_policy: {model_policy!r}") from exc
+
+
+def _resolve_billing_model_id(model_policy: str, provider_name: str, settings: Settings) -> str:
+    """予算予約・失敗記録に使う、実プロバイダーに対応したモデルIDを返す。"""
+    if provider_name == "local":
+        return resolve_local_model_id(model_policy, settings)
+    return resolve_model_id(model_policy, settings)
+
 
 _BUDGET_WARNING_THRESHOLD = 0.8
 
@@ -321,7 +343,7 @@ async def call_llm(
 ) -> StructuredLLMResult:
     """LLM呼び出しの唯一の入口。キャッシュ・予算・使用量記録をすべてここで行う。"""
     settings = settings or get_settings()
-    provider_name = provider_name or settings.LLM_PROVIDER
+    provider_name = provider_name or _resolve_provider_name(model_policy, settings)
 
     input_hash = hashlib.sha256(
         "␟".join([operation, prompt_version, model_policy, system_prompt, user_prompt]).encode(
@@ -351,15 +373,17 @@ async def call_llm(
         )
 
     limits = _operation_limits(operation)
-    model_id = resolve_model_id(model_policy, settings)
+    model_id = _resolve_billing_model_id(model_policy, provider_name, settings)
     estimated_input_tokens = _estimate_input_tokens(system_prompt + user_prompt)
     if estimated_input_tokens > limits.max_input_tokens:
         raise CostLimitExceededError(
             f"estimated input tokens {estimated_input_tokens} exceed limit "
             f"{limits.max_input_tokens} for operation={operation}"
         )
-    estimated_cost = _compute_cost_micro_usd(
-        model_id, estimated_input_tokens, limits.max_output_tokens
+    estimated_cost = (
+        0
+        if provider_name == "local"
+        else _compute_cost_micro_usd(model_id, estimated_input_tokens, limits.max_output_tokens)
     )
     if estimated_cost > limits.max_cost_micro_usd:
         raise CostLimitExceededError(

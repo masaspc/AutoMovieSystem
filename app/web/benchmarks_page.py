@@ -60,17 +60,21 @@ def create_benchmark(
     require_csrf(request, csrf_token)
 
     tags = [t.strip() for t in format_tags.split(",") if t.strip()]
-    benchmark, created = register_benchmark_video(
-        db,
-        channel_id=channel_id,
-        title=title.strip(),
-        channel_name=channel_name.strip(),
-        url=url.strip(),
-        views=int(views) if views.strip().isdigit() else None,
-        subscribers=int(subscribers) if subscribers.strip().isdigit() else None,
-        notes=notes.strip() or None,
-        format_tags=tags,
-    )
+    try:
+        benchmark, created = register_benchmark_video(
+            db,
+            channel_id=channel_id,
+            title=title.strip(),
+            channel_name=channel_name.strip(),
+            url=url.strip(),
+            views=int(views) if views.strip().isdigit() else None,
+            subscribers=int(subscribers) if subscribers.strip().isdigit() else None,
+            notes=notes.strip() or None,
+            format_tags=tags,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return RedirectResponse(url=with_message("/benchmarks", error=str(exc)), status_code=303)
     db.commit()
 
     info = f"ベンチマークを登録しました: {benchmark.title}" if created else "同じURLが登録済みです"

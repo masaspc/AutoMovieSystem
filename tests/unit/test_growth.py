@@ -220,6 +220,29 @@ def test_benchmark_register_and_derive_via_web(client: TestClient, db_session: S
     assert db_session.query(Topic).filter(Topic.source_type == "benchmark").count() == 1
 
 
+def test_benchmark_rejects_non_youtube_or_unsafe_url(
+    client: TestClient, db_session: Session
+) -> None:
+    channel = _make_channel(db_session)
+    db_session.commit()
+    csrf_token = client.get("/benchmarks").cookies["csrf_token"]
+
+    response = client.post(
+        "/benchmarks",
+        data={
+            "csrf_token": csrf_token,
+            "channel_id": channel.id,
+            "title": "不正URL",
+            "channel_name": "参考チャンネル",
+            "url": "javascript:alert(1)",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert db_session.query(BenchmarkVideo).count() == 0
+
+
 def test_growth_batch_post_without_csrf_is_forbidden(
     client: TestClient, db_session: Session
 ) -> None:
