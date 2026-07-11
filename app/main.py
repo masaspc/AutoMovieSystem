@@ -17,6 +17,7 @@ from app.core.auth import require_admin
 from app.core.config import Settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import get_db
+from app.services.media.tools import check_media_tools
 from app.web.router import router as web_router
 
 APP_DIR = Path(__file__).resolve().parent
@@ -68,9 +69,32 @@ def create_app() -> FastAPI:
     app.include_router(api_router, dependencies=admin_dependency)
 
     @app.get("/health")
-    def health(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+    def health(db: Annotated[Session, Depends(get_db)]) -> dict[str, str | bool]:
+        # FFmpeg未検出でも管理画面・API自体は利用可能なため、HTTP 200を維持しつつ
+        # DB状態とレンダリング可否を分けて返す(Docker等のヘルスチェックはHTTP 200のみ
+        # を見ること。動画生成の可否は ready_for_rendering を参照)。
         db.execute(text("SELECT 1"))
-        return {"status": "ok"}
+        tools = check_media_tools()
+        return {
+            "status": "ok" if tools.ok else "degraded",
+            "database": "ok",
+            "ffmpeg": "ok" if tools.ffmpeg_available else "missing",
+            "ffprobe": "ok" if tools.ffprobe_available else "missing",
+            "ready_for_rendering": tools.ok,
+        }
+
+    # FFmpeg/ffprobe 未検出はレンダリング実行時まで顕在化しないため、起動時に
+    # `-version` の実行まで確認して警告を出す(アプリ自体は起動を継続する。
+    # レンダリング以外の機能は FFmpeg なしでも動くため)。
+    startup_tools = check_media_tools(settings, verify_execution=True)
+    if not startup_tools.ok:
+        logger.warning(
+            "media_tools_missing",
+            ffmpeg_path=startup_tools.ffmpeg_path,
+            ffmpeg_available=startup_tools.ffmpeg_available,
+            ffprobe_path=startup_tools.ffprobe_path,
+            ffprobe_available=startup_tools.ffprobe_available,
+        )
 
     logger.info("app_created")
     return app

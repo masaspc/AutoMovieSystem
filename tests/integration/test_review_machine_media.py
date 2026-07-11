@@ -7,24 +7,18 @@
 from __future__ import annotations
 
 import math
-import shutil
 import struct
 import wave
 from pathlib import Path
 
 import pytest
 
-from app.core.config import get_settings
 from app.services.reviews import machine
 
-pytestmark = pytest.mark.media
+# FFmpeg未検出時のskip/失敗判定は conftest.py の ffmpeg_required fixture に一本化する。
+pytestmark = [pytest.mark.media, pytest.mark.usefixtures("ffmpeg_required")]
 
 _SAMPLE_RATE = 48_000
-
-
-def _ffmpeg_available() -> bool:
-    settings = get_settings()
-    return bool(shutil.which(settings.resolved_ffmpeg_path) or settings.resolved_ffmpeg_path)
 
 
 def _write_silence_wav(path: Path, *, duration_seconds: float) -> None:
@@ -51,9 +45,6 @@ def _write_beep_wav(path: Path, *, duration_seconds: float, frequency_hz: float 
 
 
 def test_detect_silence_durations_finds_long_silence(tmp_path: Path) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpegが見つかりません")
-
     silent_path = tmp_path / "silence.wav"
     _write_silence_wav(silent_path, duration_seconds=12.0)
 
@@ -64,9 +55,6 @@ def test_detect_silence_durations_finds_long_silence(tmp_path: Path) -> None:
 
 
 def test_detect_mean_volume_db_reports_audible_level_for_beep(tmp_path: Path) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpegが見つかりません")
-
     beep_path = tmp_path / "beep.wav"
     _write_beep_wav(beep_path, duration_seconds=3.0)
 
@@ -78,9 +66,6 @@ def test_detect_mean_volume_db_reports_audible_level_for_beep(tmp_path: Path) ->
 
 
 def test_detect_silence_durations_reports_no_silence_for_beep(tmp_path: Path) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpegが見つかりません")
-
     beep_path = tmp_path / "beep_full.wav"
     _write_beep_wav(beep_path, duration_seconds=12.0)
 

@@ -69,12 +69,17 @@ def list_video_projects(request: Request, db: DbSession, status: str | None = No
 
     topics_by_id = {t.id: t for t in db.query(Topic).all()}
 
+    # CSRF Cookieの発行方針を詳細画面と統一する(一覧から直接詳細のフォーム操作へ
+    # 進んでもCookieが未発行にならないよう、共通ヘルパーで同一属性のCookieを発行)。
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "video_projects/list.html",
         {"projects": projects, "topics_by_id": topics_by_id, "status_filter": status or ""},
     )
+    set_csrf_cookie(response, csrf_token)
+    return response
 
 
 def _next_pipeline_action(db: Session, project: VideoProject) -> tuple[str, str] | None:

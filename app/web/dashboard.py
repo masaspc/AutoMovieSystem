@@ -18,6 +18,7 @@ from app.models.publication import Publication
 from app.models.topic import Topic
 from app.models.usage_record import UsageRecord
 from app.models.video_project import VideoProject
+from app.services.media.tools import check_media_tools
 
 router = APIRouter(tags=["web-dashboard"])
 
@@ -93,6 +94,7 @@ def dashboard(request: Request, db: DbSession) -> HTMLResponse:
         request,
         "dashboard.html",
         {
+            "media_tools": check_media_tools(),
             "topic_counts": topic_counts,
             "project_counts": project_counts,
             "latest_publication": latest_publication,

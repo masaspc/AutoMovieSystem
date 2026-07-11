@@ -9,6 +9,17 @@
   </div>
 </div>
 
+{% if not media_tools.ok %}
+<div class="flash flash-error">
+  <strong>FFmpeg/ffprobe が見つかりません — 動画のレンダリング・検査が失敗します</strong>
+  <ul style="margin: 6px 0 0; padding-left: 20px;">
+    {% if not media_tools.ffmpeg_available %}<li>ffmpeg: <span class="mono">{{ media_tools.ffmpeg_path }}</span> を実行できません</li>{% endif %}
+    {% if not media_tools.ffprobe_available %}<li>ffprobe: <span class="mono">{{ media_tools.ffprobe_path }}</span> を実行できません</li>{% endif %}
+  </ul>
+  <p style="margin: 6px 0 0;">FFmpegをインストールするか、.env の FFMPEG_PATH / FFPROBE_PATH に実行ファイルのパスを設定してください。</p>
+</div>
+{% endif %}
+
 {% if daily_ratio >= budget_warning_threshold or monthly_ratio >= budget_warning_threshold %}
 <div class="flash flash-warning">AI予算の消費が80%を超えています。/usage で内訳を確認してください。</div>
 {% endif %}

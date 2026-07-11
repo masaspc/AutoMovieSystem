@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,8 @@ from app.providers.tts.fake import FakeTTSProvider
 from app.services.media.pipeline import prepare_assets, render_video, synthesize_audio
 from app.services.media.probe import probe_video
 
-pytestmark = pytest.mark.media
+# FFmpeg未検出時のskip/失敗判定は conftest.py の ffmpeg_required fixture に一本化する。
+pytestmark = [pytest.mark.media, pytest.mark.usefixtures("ffmpeg_required")]
 
 
 class RecordingFakeTTSProvider(FakeTTSProvider):
@@ -33,11 +33,6 @@ class RecordingFakeTTSProvider(FakeTTSProvider):
     async def synthesize(self, **kwargs):  # type: ignore[no-untyped-def]
         self.voices.append(kwargs["voice"])
         return await super().synthesize(**kwargs)
-
-
-def _ffmpeg_available() -> bool:
-    settings = get_settings()
-    return bool(shutil.which(settings.resolved_ffmpeg_path) or settings.resolved_ffmpeg_path)
 
 
 @pytest.fixture
@@ -113,9 +108,6 @@ def _make_video_project_with_script(session: Session) -> VideoProject:
 
 
 def test_full_media_pipeline_produces_valid_mp4(db_session: Session, media_generated_dir) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpeg/ffprobeが見つかりません")
-
     project = _make_video_project_with_script(db_session)
 
     # 1. 背景画像準備: SCRIPT_REVIEWED -> ASSETS_READY
@@ -170,9 +162,6 @@ def test_full_media_pipeline_produces_valid_mp4(db_session: Session, media_gener
 def test_render_video_is_idempotent_and_skips_second_render(
     db_session: Session, media_generated_dir
 ) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpeg/ffprobeが見つかりません")
-
     project = _make_video_project_with_script(db_session)
     prepare_assets(db_session, video_project_id=project.id)
     db_session.commit()
@@ -224,9 +213,6 @@ def test_dialogue_is_ignored_for_existing_generic_tts_flow(
 def test_dialogue_render_with_character_frames_produces_valid_mp4(
     db_session: Session, media_generated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    if not _ffmpeg_available():
-        pytest.skip("ffmpeg/ffprobeが見つかりません")
-
     assets_dir = tmp_path / "characters"
     for character, color in {
         "zundamon": (88, 180, 118, 255),

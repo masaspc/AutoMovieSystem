@@ -52,6 +52,28 @@ def _clear_settings_cache() -> Generator[None, None, None]:
 
 
 @pytest.fixture
+def ffmpeg_required() -> None:
+    """実FFmpeg/ffprobeを要するテスト用のガード。
+
+    未検出時はskipするが、CIのメディアジョブ等で `AMX_REQUIRE_FFMPEG=1` が設定されて
+    いる場合は「skipで隠さず」失敗させる(FFmpeg必須環境でのインストール漏れ検知)。
+    """
+    from app.services.media.tools import check_media_tools
+
+    status = check_media_tools()
+    if status.ok:
+        return
+    message = (
+        f"ffmpeg/ffprobeが見つかりません "
+        f"(ffmpeg={status.ffmpeg_path}: {'ok' if status.ffmpeg_available else 'missing'}, "
+        f"ffprobe={status.ffprobe_path}: {'ok' if status.ffprobe_available else 'missing'})"
+    )
+    if os.environ.get("AMX_REQUIRE_FFMPEG", "").lower() in ("1", "true"):
+        pytest.fail(f"AMX_REQUIRE_FFMPEG=1 が設定されていますが、{message}")
+    pytest.skip(message)
+
+
+@pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     """SQLite in-memory エンジン + metadata.create_all のセッションフィクスチャ。"""
     engine = create_engine(

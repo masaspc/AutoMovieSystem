@@ -29,7 +29,9 @@ from app.providers.youtube.fake import FakeYouTubeProvider
 from app.services.growth import run_production_batch
 from app.services.orchestration import PipelineProviders
 
-pytestmark = pytest.mark.e2e
+# 量産バッチは実FFmpegでレンダリングまで完走する。FFmpeg未検出時のskip/失敗判定は
+# conftest.py の ffmpeg_required fixture に一本化する(AMX_REQUIRE_FFMPEG=1 で失敗へ昇格)。
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("ffmpeg_required")]
 
 
 @pytest.fixture

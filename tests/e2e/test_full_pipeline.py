@@ -40,7 +40,9 @@ from app.services.media.probe import probe_video
 from app.services.orchestration import PipelineProviders, run_full_pipeline
 from app.services.state_machine import NORMAL_STATUSES
 
-pytestmark = pytest.mark.e2e
+# E2Eは実FFmpegでレンダリングまで完走する。FFmpeg未検出時のskip/失敗判定は
+# conftest.py の ffmpeg_required fixture に一本化する(AMX_REQUIRE_FFMPEG=1 で失敗へ昇格)。
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("ffmpeg_required")]
 
 
 @pytest.fixture

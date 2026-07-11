@@ -97,6 +97,8 @@ jobs:
       DATABASE_URL: "postgresql+psycopg://postgres:postgres@localhost:5432/auto_movie_system_test"
       REDIS_URL: "redis://localhost:6379/0"
       CELERY_TASK_ALWAYS_EAGER: "true"
+      # このジョブはffmpegをインストールするため、未検出をskipで隠さず失敗させる。
+      AMX_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -117,6 +119,8 @@ jobs:
     env:
       DATABASE_URL: "sqlite:///./e2e.db"
       CELERY_TASK_ALWAYS_EAGER: "true"
+      # このジョブはffmpegをインストールするため、未検出をskipで隠さず失敗させる。
+      AMX_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
