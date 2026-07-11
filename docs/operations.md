@@ -49,7 +49,18 @@ uv run python scripts/seed.py
 - status `RESEARCH_READY` → `generate_script` 実行(LLM)
 - Fake provider では deterministic 出力。実 Anthropic ならキャッシュ効いて節約
 - 構造化出力失敗時は自動リトライ(最大1回)
+- 制作設定を指定した場合、目標尺・文字数・セクション数・構成・トーンをプロンプトへ反映
+- 推定尺がプリセットの範囲外なら最大2回まで増補または短縮する
+- 修復呼び出しもUsageRecord・予算制御の対象。Evidence IDが増減した修復結果は破棄する
 - status → `SCRIPT_REVIEWED`
+
+尺プリセットは`short`（45秒）、`standard_3min`、`standard_5min`、`standard_8min`、
+`custom`。現時点では管理画面フォームではなく
+`POST /api/topics/{topic_id}/generate-script`のJSON bodyで指定する。未指定は`short`。
+
+`speaking_rate`は0.5〜2.0の推定用係数であり、TTSエンジン自体の話速変更ではない。
+動画レビューに使う`VideoProject.target_duration_seconds`は、TTS合成後に実測音声尺と
+エンドカード尺から毎回再計算される。
 
 ### 4. 動画生成 (自動)
 

@@ -1,5 +1,35 @@
 # ClaudeCode 引き継ぎメモ
 
+## 最新更新 (2026-07-12, Codex)
+
+Phase 1の運用安定化はcommit `ae00d19`で完了。Phase 2の長尺・台本自由度対応を引き継ぎ、
+未完了差分のレビューと補完を実施した。
+
+- `ProductionSettings`と`VideoProject.production_settings` JSON列、Alembic migrationを追加
+- short/3分/5分/8分/custom、7種類のscript template、トーン・掛け合い比率へ対応
+- 目標尺・文字数・セクション数・時間配分を`script_v3`プロンプトへ反映
+- 音声化対象sectionsの文字数から推定し、範囲外なら最大2回LLM修復
+- 修復もUsageRecord・予算・キャッシュ対象。Script使用量は全試行合計
+- Evidence IDが欠落または追加された修復結果を破棄
+- ProductionSettings checksumを冪等キーへ含め、設定別Scriptを正しく再利用
+- JSON APIからProductionSettingsを指定可能。Script manifestからVideoProjectへ引き継ぐ
+- TTS再実行時にレビュー期待尺を実測値で必ず更新
+- README、operations、architecture、TASKS、DECISIONS(D-022)を更新
+
+検証結果:
+
+```powershell
+uv run ruff check .
+# All checks passed!
+uv run mypy app
+# Success: no issues found in 135 source files
+uv run pytest -q
+# 373 passed, 1 skipped (FFmpeg未検出), 1 warning
+```
+
+SQLiteのAlembic `upgrade head -> downgrade 8ddd9daa528c -> upgrade head`も成功。
+残課題はProductionSettingsの管理画面フォームと、`speaking_rate`の実TTSエンジンへの反映。
+
 ## 最新更新 (2026-07-11, Codex)
 
 対象HEAD: `f252b4c` (グロース機能まで実装済み)。この追記を含む作業ツリーには未コミットの

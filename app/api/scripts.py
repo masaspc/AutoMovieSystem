@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.script import Script
 from app.providers.llm.factory import get_llm_provider
+from app.schemas.production_settings import ProductionSettings
 from app.schemas.scripts import FindingResponse, ScriptResponse
 from app.services.jobs import JobInProgressError
 from app.services.scripts.generator import TopicNotFoundError, generate_script
@@ -31,10 +32,21 @@ def _to_response(session: Session, script: Script) -> ScriptResponse:
 
 
 @router.post("/topics/{topic_id}/generate-script", response_model=ScriptResponse, status_code=201)
-def generate_script_endpoint(topic_id: str, db: DbSession) -> ScriptResponse:
+def generate_script_endpoint(
+    topic_id: str,
+    db: DbSession,
+    production_settings: ProductionSettings | None = None,
+) -> ScriptResponse:
     provider = get_llm_provider()
     try:
-        script = asyncio.run(generate_script(db, topic_id=topic_id, provider=provider))
+        script = asyncio.run(
+            generate_script(
+                db,
+                topic_id=topic_id,
+                provider=provider,
+                production_settings=production_settings,
+            )
+        )
     except TopicNotFoundError as exc:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc

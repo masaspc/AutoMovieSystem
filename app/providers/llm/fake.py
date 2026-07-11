@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -17,6 +18,17 @@ from app.core.config import get_settings
 from app.providers.llm.base import StructuredLLMResult, get_model_pricing
 
 Generator = Callable[[bytes, str, str, type[BaseModel]], dict]
+
+# app/services/scripts/generator.py の _build_repair_prompt が埋め込むマーカーと
+# 「短い/長い」の目印文言(このFake実装専用の簡易パース。実プロバイダーは自然文で判断する)。
+_REPAIR_JSON_MARKER = "[修復対象の台本(JSON)]\n"
+_REPAIR_TOO_SHORT_MARKER = "より短いです"
+_REPAIR_TOO_LONG_MARKER = "より長いです"
+# 尺不足時に音声化対象のsectionへ加える決定的な補足文。
+_REPAIR_EXPAND_FILLER = (
+    "補足として具体例を挙げると、実務での活用場面は多岐にわたり、"
+    "注意点や導入手順まで丁寧に確認しておくことで失敗を避けやすくなります。"
+)
 
 
 def _seed_bytes(*parts: str) -> bytes:
@@ -138,6 +150,46 @@ def _generate_script_content(
     }
 
 
+def _repair_script_duration(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict:
+    """`repair_script_duration` operation用: 修復対象の台本JSONを伸縮させて返す。
+
+    `evidence_ids` を含む構造は一切変更しない(短縮時もsection.evidence_idsはそのまま)。
+    プロンプトから埋め込まれた元台本のJSONをそのまま解析できない場合は汎用生成にフォールバックする。
+    """
+    marker_index = user_prompt.find(_REPAIR_JSON_MARKER)
+    if marker_index == -1:
+        return _generate_script_content(seed, operation, user_prompt, schema)
+
+    try:
+        data = json.loads(user_prompt[marker_index + len(_REPAIR_JSON_MARKER) :])
+    except (json.JSONDecodeError, ValueError):
+        return _generate_script_content(seed, operation, user_prompt, schema)
+
+    if _REPAIR_TOO_SHORT_MARKER in user_prompt:
+        sections = data.get("sections", [])
+        if sections:
+            section = sections[-1]
+            section["narration"] = f"{section.get('narration', '')}{_REPAIR_EXPAND_FILLER}"
+            dialogue = section.get("dialogue", []) or []
+            if dialogue:
+                dialogue[-1]["text"] = f"{dialogue[-1].get('text', '')}{_REPAIR_EXPAND_FILLER}"
+    elif _REPAIR_TOO_LONG_MARKER in user_prompt:
+        for section in data.get("sections", []):
+            narration = str(section.get("narration") or "")
+            section["narration"] = narration[: max(1, len(narration) // 2)]
+            for line in section.get("dialogue", []) or []:
+                text = str(line.get("text") or "")
+                line["text"] = text[: max(1, len(text) // 2)]
+
+    try:
+        schema.model_validate(data)
+    except Exception:
+        return _generate_script_content(seed, operation, user_prompt, schema)
+    return data
+
+
 def _classify_comment(
     seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
 ) -> dict:
@@ -178,6 +230,7 @@ def _review_content(seed: bytes, operation: str, user_prompt: str, schema: type[
 
 _GENERATORS: dict[str, Generator] = {
     "generate_script": _generate_script_content,
+    "repair_script_duration": _repair_script_duration,
     "classify_comment": _classify_comment,
     "review_content": _review_content,
 }

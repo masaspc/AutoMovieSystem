@@ -35,6 +35,7 @@ from app.providers.llm.base import LLMProvider
 from app.providers.tts.base import TTSProvider
 from app.providers.youtube.base import CommentData, VideoStatistics, YouTubeProvider
 from app.providers.youtube.fake import FakeYouTubeProvider
+from app.schemas.production_settings import ProductionSettings
 from app.services.analytics.sync import sync_video_metrics
 from app.services.comments.sync import sync_comments
 from app.services.feedback.insights import generate_publication_insights
@@ -138,6 +139,13 @@ def link_script_and_advance(session: Session, project: VideoProject, script: Scr
     """
     if project.script_id is None:
         project.script_id = script.id
+    if project.production_settings is None:
+        manifest_settings = (script.source_manifest or {}).get("production_settings")
+        if manifest_settings is not None:
+            # 保存前に必ずスキーマ検証し、不正なJSONをVideoProjectへ伝播させない。
+            project.production_settings = ProductionSettings.model_validate(
+                manifest_settings
+            ).model_dump()
     _advance_status(project, "SCRIPT_GENERATED")
 
     findings = inspect_script_with_history(session, script)
@@ -293,7 +301,17 @@ async def run_production_pipeline(
     session.flush()
 
     # 3. 台本生成(冪等) -> SCRIPT_GENERATED -> 検査通過で SCRIPT_REVIEWED
-    script = await generate_script(session, topic_id=topic.id, provider=providers.llm)
+    production_settings = (
+        ProductionSettings.model_validate(project.production_settings)
+        if project.production_settings
+        else None
+    )
+    script = await generate_script(
+        session,
+        topic_id=topic.id,
+        provider=providers.llm,
+        production_settings=production_settings,
+    )
     if link_script_and_advance(session, project, script):
         skipped_steps.append("script_review_blocking_findings")
     session.flush()

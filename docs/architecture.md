@@ -116,6 +116,8 @@ Approval, Publication, VideoMetricDaily, Comment, Insight, JobRun, UsageRecord�
 - `Topic(channel_id, source_type, source_ref)` UNIQUE(source_ref は取り込み元の自然キー。
   手動入力はクライアント生成キー、CSVは行ハッシュ、コメント派生は youtube_comment_id)— ADR-0004
 - `VideoProject(topic_id, generation)` UNIQUE(MVPは generation=1 固定運用)— ADR-0004
+- `VideoProject.production_settings` はユーザー希望の尺・構成をJSONで保存する。
+  `target_duration_seconds`はTTS実測に基づくレビュー期待尺であり、希望尺との二重管理を避ける
 - `UsageRecord(job_run_id, seq)` UNIQUE(job_run_id 非NULL時)— ADR-0004
 - 金額はすべて 整数マイクロUSD(`*_micro_usd`)で保存。float禁止 — ADR-0007
 - 予算は BudgetLedger 行への条件付きUPDATE(reserve→commit/release)でアトミックに消費 — ADR-0007

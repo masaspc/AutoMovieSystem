@@ -52,6 +52,44 @@ def test_generate_script_then_get_via_api(client: TestClient, db_session: Sessio
     assert get_response.json()["id"] == script_id
 
 
+def test_generate_script_accepts_production_settings(
+    client: TestClient, db_session: Session
+) -> None:
+    topic = _make_topic_with_evidence(db_session)
+
+    response = client.post(
+        f"/api/topics/{topic.id}/generate-script",
+        json={
+            "preset": "custom",
+            "video_format": "custom",
+            "target_duration_seconds": 90,
+            "min_duration_seconds": 75,
+            "max_duration_seconds": 105,
+            "min_sections": 2,
+            "max_sections": 4,
+            "script_template": "comparison",
+        },
+    )
+
+    assert response.status_code == 201
+    manifest = response.json()["source_manifest"]
+    assert manifest["production_settings"]["target_duration_seconds"] == 90
+    assert manifest["production_settings"]["script_template"] == "comparison"
+
+
+def test_generate_script_rejects_invalid_production_settings(
+    client: TestClient, db_session: Session
+) -> None:
+    topic = _make_topic_with_evidence(db_session)
+
+    response = client.post(
+        f"/api/topics/{topic.id}/generate-script",
+        json={"speaking_rate": 0},
+    )
+
+    assert response.status_code == 422
+
+
 def test_generate_script_topic_not_found_via_api(client: TestClient) -> None:
     response = client.post("/api/topics/does-not-exist/generate-script")
     assert response.status_code == 404

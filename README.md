@@ -6,7 +6,7 @@ YouTubeチャンネル向けの**企画→台本→動画生成→レビュー�
 ## 主要機能
 
 - **企画・スコアリング**: CSV/手動入力から Demand/Revenue など6因子で自動スコア計算
-- **台本生成**: LLMで企画から台本初稿を自動生成、構造化検査で修復リトライ
+- **台本生成**: 30秒〜8分の尺プリセットと7種類の構成テンプレートに対応し、推定尺が範囲外なら最大2回修復
 - **動画生成**: TTS字幕+FFmpegで H.264/AAC MP4を自動レンダリング、ffprobe検査
 - **自動レビュー**: 機械検査(映像フォーマット・音量・沈黙)＋ LLMコンテンツ検査
 - **人間承認**: fail-closed デフォルト。管理画面で承認/却下、監査ログ記録
@@ -101,6 +101,39 @@ Jinja2+HTMX による管理画面で企画・台本・レビュー・公開状�
 # 生成物クリア
 ./scripts/dev.ps1 clean-generated
 ```
+
+## 台本の目標尺を指定する
+
+Phase 2ではJSON APIから制作設定を指定できる。管理画面での設定フォームは後続Phaseで追加予定。
+指定しない場合は後方互換のため`short`（目標45秒、許容30〜60秒）になる。
+
+| preset | 目標尺 | 許容範囲 | セクション数 |
+|---|---:|---:|---:|
+| `short` | 45秒 | 30〜60秒 | 1〜3 |
+| `standard_3min` | 180秒 | 150〜210秒 | 3〜5 |
+| `standard_5min` | 300秒 | 270〜330秒 | 4〜7 |
+| `standard_8min` | 480秒 | 420〜540秒 | 5〜9 |
+| `custom` | 任意 | 既定で目標の±15% | 任意 |
+
+構成テンプレートは`explainer`、`ranking`、`problem_solution`、`comparison`、`story`、
+`dialogue`、`shorts`を指定できる。
+
+```powershell
+$body = @{
+  preset = "standard_3min"
+  script_template = "explainer"
+  tone = "丁寧でテンポよく"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://localhost:8000/api/topics/<topic-id>/generate-script" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+LLM生成直後は日本語300文字/分を基準に推定し、許容範囲外なら最大2回修復する。
+最終的なレビュー期待尺はTTS合成後の実測音声尺を正として更新される。
 
 ## Docker Compose で起動 (本番型)
 

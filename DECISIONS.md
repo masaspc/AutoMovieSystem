@@ -178,3 +178,15 @@ Ollama / LM Studio / vLLM が共通で話せる OpenAI互換 Chat Completions AP
   として orchestration から抽出し、フルパイプラインと共通化
 - 人為的な再生・登録・評価・コメントを発生させる機能は実装しない(CLAUDE.md絶対原則)
 - 勝ちパターン特定は「登録効率(1000再生あたり登録増)」を第一ソートキーとする
+
+## D-022: 希望尺はProductionSettings、レビュー期待尺はTTS実測値(2026-07-12)
+
+動画の制作方針は`ProductionSettings`として`VideoProject.production_settings`のJSON列へ保存する。
+プリセット、希望尺、許容範囲、セクション数、構成テンプレート、トーン、掛け合い比率を含み、
+正規化JSONのchecksumを台本生成の冪等キーへ含める。設定変更時は新しいScript versionを生成する。
+
+`VideoProject.target_duration_seconds`は従来どおり機械レビュー用の期待尺とし、希望尺の保存には
+使用しない。TTS合成のたびに音声Assetの実測合計+エンドカード尺で上書きし、古い実測値を残さない。
+LLM生成直後の推定は音声化対象のsectionだけを日本語300文字/分で計算し、範囲外なら最大2回修復する。
+修復も通常のLLM gatewayを通すためUsageRecord・予算予約・キャッシュの対象になる。Evidence IDが
+増減する修復は根拠の欠落・捏造を避けるため破棄し、上限後も範囲外なら警告を残してベストエフォートで保存する。

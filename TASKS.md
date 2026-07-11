@@ -60,6 +60,11 @@
       /growth 成長ダッシュボード(登録者純増プログレス・投稿ペース・動画別パフォーマンス・続編企画化)、
       /benchmarks ベンチマーク登録→差別化企画生成、量産バッチ(スコア上位を自動レビューまで一括制作。
       承認は人間のまま=fail-closed維持)。unit 8+e2e 2件追加、計295件パス
+- [x] 運用安定化 Phase 1: FFmpeg/ffprobe共通検出、ローカルskip/CI必須fail、起動時警告、
+      `/health`状態、ダッシュボード警告、CSRF Cookie統一。commit `ae00d19`
+- [x] 長尺・台本自由度 Phase 2: ProductionSettings(JSON)+Alembic、5尺プリセット、
+      7構成テンプレート、設定checksum付き冪等生成、最大2回の尺修復、Evidence保全、
+      TTS実測期待尺の毎回更新、JSON API入力、運用ドキュメント更新
 
 ## 未解決事項
 
@@ -67,6 +72,8 @@
 - LLM料金表(MODEL_PRICING)と operation別上限(OPERATION_LIMITS)はコード内定数。料金改定時はコード変更が必要(MVP許容)
 - スコア再計算は idempotency_key 固定のため初回のみ。再スコアリング運用は将来対応
 - Review.score 採点式(blocking-25/warning-5)は暫定。運用要件確定後に見直し
+- ProductionSettingsの管理画面入力フォームは未実装。現状はJSON APIから指定する
+- speaking_rateは台本推定用で、VOICEVOX等の実TTS話速にはまだ反映しない
 - CSRF鍵は SECRET_ENCRYPTION_KEY 未設定時に開発用フォールバック。本番はfail-fast必須化を Phase 8 セキュリティレビューで確認
 - ffmpeg/docker は PATH 未反映。設定のパス解決(D-007)で吸収する
 - ADR-0005 の reconcile 実装は Phase 5 で完了(FakeYouTubeProvider + RealYouTubeProvider 共通契約。
