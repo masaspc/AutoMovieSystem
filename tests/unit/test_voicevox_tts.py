@@ -41,6 +41,7 @@ def test_voicevox_synthesizes_selected_character_to_wav(tmp_path: Path) -> None:
                 voice="metan",
                 output_path=tmp_path / "metan.wav",
                 idempotency_key="test",
+                speed_scale=1.25,
             )
 
     result = asyncio.run(run())
@@ -48,6 +49,7 @@ def test_voicevox_synthesizes_selected_character_to_wav(tmp_path: Path) -> None:
     assert result.duration_seconds > 0  # type: ignore[attr-defined]
     assert mock_post.await_args_list[0].kwargs["params"]["speaker"] == 2
     assert mock_post.await_args_list[1].kwargs["params"]["speaker"] == 2
+    assert mock_post.await_args_list[1].kwargs["json"]["speedScale"] == 1.25
 
 
 def test_voicevox_rejects_unknown_character(tmp_path: Path) -> None:

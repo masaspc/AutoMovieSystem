@@ -39,6 +39,7 @@ class VoicevoxTTSProvider:
         voice: str,
         output_path: Path,
         idempotency_key: str,
+        speed_scale: float = 1.0,
     ) -> TTSResult:
         del idempotency_key
         speaker = self._speaker_id(voice)
@@ -50,10 +51,12 @@ class VoicevoxTTSProvider:
                     params={"text": text, "speaker": speaker},
                 )
                 query_response.raise_for_status()
+                audio_query = query_response.json()
+                audio_query["speedScale"] = speed_scale
                 synthesis_response = await client.post(
                     f"{self._base_url}/synthesis",
                     params={"speaker": speaker},
-                    json=query_response.json(),
+                    json=audio_query,
                 )
                 synthesis_response.raise_for_status()
         except (httpx.HTTPError, ValueError) as exc:

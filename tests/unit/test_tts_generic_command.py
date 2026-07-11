@@ -45,12 +45,32 @@ def stub_script(tmp_path: Path) -> Path:
 
 
 def test_substitute_placeholders_replaces_each_element_independently() -> None:
-    template = ["cmd", "--text", "{text}", "--voice", "{voice}", "--out", "{output}"]
+    template = [
+        "cmd",
+        "--text",
+        "{text}",
+        "--voice",
+        "{voice}",
+        "--out",
+        "{output}",
+        "--speed",
+        "{speed}",
+    ]
     result = substitute_placeholders(
-        template, text="hello world", voice="v1", output="out/audio.wav"
+        template, text="hello world", voice="v1", output="out/audio.wav", speed=1.25
     )
 
-    assert result == ["cmd", "--text", "hello world", "--voice", "v1", "--out", "out/audio.wav"]
+    assert result == [
+        "cmd",
+        "--text",
+        "hello world",
+        "--voice",
+        "v1",
+        "--out",
+        "out/audio.wav",
+        "--speed",
+        "1.25",
+    ]
     # プレースホルダーを含まない要素は変化しない。
     assert result[0] == "cmd"
 

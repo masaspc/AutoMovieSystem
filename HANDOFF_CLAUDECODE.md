@@ -28,7 +28,8 @@ uv run pytest -q
 ```
 
 SQLiteのAlembic `upgrade head -> downgrade 8ddd9daa528c -> upgrade head`も成功。
-残課題はProductionSettingsの管理画面フォームと、`speaking_rate`の実TTSエンジンへの反映。
+その後、ProductionSettings管理画面、希望尺/推定尺表示、セクション編集・並べ替え・
+AI部分再生成、`speaking_rate`のVOICEVOX/Fake/Generic Command反映まで実装済み。
 
 ## 最新更新 (2026-07-11, Codex)
 

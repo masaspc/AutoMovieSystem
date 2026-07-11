@@ -45,9 +45,42 @@
       <h3 class="card-title">台本{% if script %}(バージョン {{ script.version }}){% endif %}</h3>
       {% if script %}
       <p style="font-weight: 700; margin-top: 0;">{{ script.title }}</p>
-      <ol style="padding-left: 20px;">
+      <p class="muted">
+        {{ production_settings.preset }} ／ {{ production_settings.script_template }} ／
+        希望 {{ production_settings.target_duration_seconds }}秒 ／
+        推定 {{ "%.1f"|format(estimated_duration_seconds) }}秒 ／
+        読み上げ {{ production_settings.speaking_rate }}倍
+      </p>
+      <div class="progress"><span class="progress-fill progress-info" style="width: {{ [100, estimated_duration_seconds / production_settings.target_duration_seconds * 100] | min }}%"></span></div>
+      {% if script_editable %}
+      <p class="muted">編集内容は元台本を上書きせず、新しいバージョンとして保存されます。</p>
+      {% endif %}
+      <ol class="script-sections" style="padding-left: 20px;">
         {% for section in (script.body.get("sections") or []) %}
-        <li style="margin-bottom: 10px;">
+        <li style="margin-bottom: 16px;">
+          {% if script_editable %}
+          <form method="post" action="/video-projects/{{ project.id }}/script/sections/{{ loop.index0 }}/update">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <div class="field"><label>見出し</label><input type="text" name="heading" maxlength="500" value="{{ section.get('heading', '') }}" required /></div>
+            <div class="field"><label>ナレーション</label><textarea name="narration" rows="5" maxlength="50000" required>{{ section.get("narration", "") }}</textarea></div>
+            <div class="field"><label>場面・背景の指示</label><input type="text" name="visual_instruction" maxlength="2000" value="{{ section.get('visual_instruction', '') }}" required /></div>
+            <div class="actions">
+              <button type="submit" class="btn-sm">更新</button>
+            </div>
+          </form>
+          <form method="post" action="/video-projects/{{ project.id }}/script/sections/{{ loop.index0 }}/regenerate" style="margin-top: 8px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <div class="form-row">
+              <div class="field" style="flex: 1;"><label>AIへの部分修正指示</label><input type="text" name="instruction" maxlength="1000" placeholder="例: 初心者向けの具体例を追加" /></div>
+              <button type="submit" class="btn-secondary">この部分だけAI再生成</button>
+            </div>
+          </form>
+          <div class="actions" style="margin-top: 6px;">
+            <form class="inline" method="post" action="/video-projects/{{ project.id }}/script/sections/{{ loop.index0 }}/move"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="direction" value="up" /><button type="submit" class="btn-secondary btn-sm"{{ ' disabled' if loop.first else '' }}>↑ 上へ</button></form>
+            <form class="inline" method="post" action="/video-projects/{{ project.id }}/script/sections/{{ loop.index0 }}/move"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="direction" value="down" /><button type="submit" class="btn-secondary btn-sm"{{ ' disabled' if loop.last else '' }}>↓ 下へ</button></form>
+            <form class="inline" method="post" action="/video-projects/{{ project.id }}/script/sections/{{ loop.index0 }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button type="submit" class="btn-danger btn-sm"{{ ' disabled' if loop.length <= 1 else '' }}>削除</button></form>
+          </div>
+          {% else %}
           <strong>{{ section.get("heading", "") }}</strong>
           {% set section_dialogue = section.get("dialogue") or [] %}
           {% if dialogue_script_enabled and section_dialogue %}
@@ -59,9 +92,23 @@
           {% else %}
           <p class="muted" style="margin: 4px 0 0;">{{ section.get("narration", "") }}</p>
           {% endif %}
+          {% endif %}
         </li>
         {% endfor %}
       </ol>
+      {% if script_editable %}
+      <hr />
+      <h4>セクション追加</h4>
+      <form method="post" action="/video-projects/{{ project.id }}/script/sections/add">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="field"><label>見出し</label><input type="text" name="heading" maxlength="500" required /></div>
+        <div class="field"><label>ナレーション</label><textarea name="narration" rows="4" maxlength="50000" required></textarea></div>
+        <div class="field"><label>場面・背景の指示</label><input type="text" name="visual_instruction" maxlength="2000" value="内容に合う背景を表示" required /></div>
+        <button type="submit" class="btn-secondary">セクション追加</button>
+      </form>
+      {% elif project.status not in ["RESEARCH_READY", "SCRIPT_GENERATED", "SCRIPT_REVIEWED"] %}
+      <p class="muted">素材生成後は台本と音声の不整合を防ぐため編集できません。</p>
+      {% endif %}
       {% else %}
       <div class="empty">台本は未生成です</div>
       {% endif %}

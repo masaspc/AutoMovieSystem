@@ -35,4 +35,5 @@ class TTSProvider(Protocol):
         voice: str,
         output_path: Path,
         idempotency_key: str,
+        speed_scale: float = 1.0,
     ) -> TTSResult: ...

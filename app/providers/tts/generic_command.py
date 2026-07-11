@@ -18,7 +18,7 @@ _DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
 def substitute_placeholders(
-    template: list[str], *, text: str, voice: str, output: str
+    template: list[str], *, text: str, voice: str, output: str, speed: float = 1.0
 ) -> list[str]:
     """コマンドテンプレートの各要素内で `{text}`/`{voice}`/`{output}` を置換する。
 
@@ -27,7 +27,12 @@ def substitute_placeholders(
     """
     substituted: list[str] = []
     for arg in template:
-        replaced = arg.replace("{text}", text).replace("{voice}", voice).replace("{output}", output)
+        replaced = (
+            arg.replace("{text}", text)
+            .replace("{voice}", voice)
+            .replace("{output}", output)
+            .replace("{speed}", str(speed))
+        )
         substituted.append(replaced)
     return substituted
 
@@ -50,10 +55,15 @@ class GenericCommandTTSProvider:
         voice: str,
         output_path: Path,
         idempotency_key: str,
+        speed_scale: float = 1.0,
     ) -> TTSResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         args = substitute_placeholders(
-            self._command_template, text=text, voice=voice, output=str(output_path)
+            self._command_template,
+            text=text,
+            voice=voice,
+            output=str(output_path),
+            speed=speed_scale,
         )
 
         try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Annotated
 
@@ -26,7 +27,11 @@ from app.models.script import Script
 from app.models.topic import Topic
 from app.models.video_metric_daily import VideoMetricDaily
 from app.models.video_project import VideoProject
+from app.schemas.production_settings import ProductionSettings
+from app.schemas.script_content import ScriptContent
 from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
+from app.services.scripts.duration import estimate_duration_seconds
+from app.services.scripts.editor import ScriptEditError, save_edited_script
 from app.web.common import require_csrf, with_message
 from app.workers.tasks.media import (
     prepare_assets_task,
@@ -35,12 +40,14 @@ from app.workers.tasks.media import (
 )
 from app.workers.tasks.publishing import upload_video_task
 from app.workers.tasks.reviews import run_automated_review_task
+from app.workers.tasks.scripts import regenerate_section_task
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["web-video-projects"])
 
 DbSession = Annotated[Session, Depends(get_db)]
+_SCRIPT_EDITABLE_STATUSES = {"RESEARCH_READY", "SCRIPT_GENERATED", "SCRIPT_REVIEWED"}
 
 
 def _latest_reviews(session: Session, video_project_id: str) -> list[Review]:
@@ -171,6 +178,27 @@ def video_project_detail(
         project.output_path and project.checksum and Path(project.output_path).exists()
     )
     next_action = _next_pipeline_action(db, project)
+    production_settings = ProductionSettings.model_validate(
+        project.production_settings or ProductionSettings().model_dump()
+    )
+    try:
+        validated_content = ScriptContent.model_validate(script.body) if script else None
+    except ValueError:
+        validated_content = None
+    estimated_duration_seconds = (
+        estimate_duration_seconds(
+            validated_content,
+            production_settings,
+            dialogue_enabled=dialogue_script_enabled(),
+        )
+        if validated_content
+        else 0.0
+    )
+    script_editable = bool(
+        validated_content
+        and project.status in _SCRIPT_EDITABLE_STATUSES
+        and not assets
+    )
 
     csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
@@ -192,6 +220,9 @@ def video_project_detail(
             "insights": insights,
             "media_available": media_available,
             "next_action": next_action,
+            "production_settings": production_settings,
+            "estimated_duration_seconds": estimated_duration_seconds,
+            "script_editable": script_editable,
             "dialogue_script_enabled": dialogue_script_enabled(),
             "csrf_token": csrf_token,
             "task_id": task_id,
@@ -200,6 +231,184 @@ def video_project_detail(
     )
     set_csrf_cookie(response, csrf_token)
     return response
+
+
+def _editable_project_and_script(
+    db: Session, video_project_id: str
+) -> tuple[VideoProject, Script, ProductionSettings]:
+    project = db.get(VideoProject, video_project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
+    script = db.get(Script, project.script_id) if project.script_id else None
+    if script is None:
+        raise HTTPException(status_code=409, detail="編集できる台本がありません")
+    has_assets = db.query(Asset).filter(Asset.video_project_id == project.id).first() is not None
+    if project.status not in _SCRIPT_EDITABLE_STATUSES or has_assets:
+        raise HTTPException(
+            status_code=409,
+            detail="素材生成後の台本は編集できません。新しい動画プロジェクトで再生成してください",
+        )
+    settings = ProductionSettings.model_validate(
+        project.production_settings or ProductionSettings().model_dump()
+    )
+    return project, script, settings
+
+
+def _save_script_body(
+    db: Session,
+    *,
+    project: VideoProject,
+    script: Script,
+    settings: ProductionSettings,
+    body: dict,
+    reason: str,
+) -> Script:
+    edited = save_edited_script(
+        db,
+        source=script,
+        body=body,
+        production_settings=settings,
+        edit_reason=reason,
+        dialogue_enabled=dialogue_script_enabled(),
+    )
+    project.script_id = edited.id
+    return edited
+
+
+@router.post("/video-projects/{video_project_id}/script/sections/{section_index}/update")
+def update_script_section(
+    video_project_id: str,
+    section_index: int,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    heading: Annotated[str, Form(min_length=1, max_length=500)],
+    narration: Annotated[str, Form(min_length=1, max_length=50_000)],
+    visual_instruction: Annotated[str, Form(min_length=1, max_length=2_000)],
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    project, script, settings = _editable_project_and_script(db, video_project_id)
+    body = deepcopy(script.body)
+    sections = body.get("sections") or []
+    if not 0 <= section_index < len(sections):
+        raise HTTPException(status_code=404, detail="section not found")
+    sections[section_index].update(
+        {
+            "heading": heading.strip(),
+            "narration": narration.strip(),
+            "visual_instruction": visual_instruction.strip(),
+        }
+    )
+    try:
+        _save_script_body(
+            db,
+            project=project,
+            script=script,
+            settings=settings,
+            body=body,
+            reason="section_update",
+        )
+    except (ScriptEditError, ValueError) as exc:
+        db.rollback()
+        return _redirect_back(video_project_id, error=str(exc))
+    db.commit()
+    return _redirect_back(video_project_id, info="セクションを更新しました")
+
+
+@router.post("/video-projects/{video_project_id}/script/sections/add")
+def add_script_section(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    heading: Annotated[str, Form(min_length=1, max_length=500)],
+    narration: Annotated[str, Form(min_length=1, max_length=50_000)],
+    visual_instruction: Annotated[str, Form(min_length=1, max_length=2_000)],
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    project, script, settings = _editable_project_and_script(db, video_project_id)
+    body = deepcopy(script.body)
+    (body.setdefault("sections", [])).append(
+        {
+            "heading": heading.strip(),
+            "narration": narration.strip(),
+            "visual_instruction": visual_instruction.strip(),
+            "evidence_ids": [],
+            "dialogue": [],
+        }
+    )
+    try:
+        _save_script_body(
+            db, project=project, script=script, settings=settings, body=body, reason="section_add"
+        )
+    except (ScriptEditError, ValueError) as exc:
+        db.rollback()
+        return _redirect_back(video_project_id, error=str(exc))
+    db.commit()
+    return _redirect_back(video_project_id, info="セクションを追加しました")
+
+
+@router.post("/video-projects/{video_project_id}/script/sections/{section_index}/move")
+def move_script_section(
+    video_project_id: str,
+    section_index: int,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    direction: Annotated[str, Form()],
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    project, script, settings = _editable_project_and_script(db, video_project_id)
+    body = deepcopy(script.body)
+    sections = body.get("sections") or []
+    target = section_index - 1 if direction == "up" else section_index + 1
+    if not (0 <= section_index < len(sections) and 0 <= target < len(sections)):
+        return _redirect_back(video_project_id, error="これ以上移動できません")
+    sections[section_index], sections[target] = sections[target], sections[section_index]
+    _save_script_body(
+        db, project=project, script=script, settings=settings, body=body, reason="section_move"
+    )
+    db.commit()
+    return _redirect_back(video_project_id, info="セクションを並べ替えました")
+
+
+@router.post("/video-projects/{video_project_id}/script/sections/{section_index}/delete")
+def delete_script_section(
+    video_project_id: str,
+    section_index: int,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    project, script, settings = _editable_project_and_script(db, video_project_id)
+    body = deepcopy(script.body)
+    sections = body.get("sections") or []
+    if len(sections) <= 1:
+        return _redirect_back(video_project_id, error="最後のセクションは削除できません")
+    if not 0 <= section_index < len(sections):
+        raise HTTPException(status_code=404, detail="section not found")
+    sections.pop(section_index)
+    _save_script_body(
+        db, project=project, script=script, settings=settings, body=body, reason="section_delete"
+    )
+    db.commit()
+    return _redirect_back(video_project_id, info="セクションを削除しました")
+
+
+@router.post("/video-projects/{video_project_id}/script/sections/{section_index}/regenerate")
+def regenerate_script_section_route(
+    video_project_id: str,
+    section_index: int,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    instruction: Annotated[str, Form(max_length=1_000)] = "",
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    _editable_project_and_script(db, video_project_id)
+    task = regenerate_section_task.delay(video_project_id, section_index, instruction.strip())
+    return _dispatch_task(video_project_id, task.id, "セクション再生成")
 
 
 def _redirect_back(

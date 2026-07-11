@@ -49,6 +49,53 @@
 </div>
 {% endif %}
 
+<div class="card" id="production-settings">
+  <h3 class="card-title">動画の制作設定</h3>
+  <p class="muted">尺・構成・読み上げ速度を選んでから台本を生成します。標準プリセットではカスタム尺欄は使用されません。</p>
+  <form method="post" action="/topics/{{ topic.id }}/production-settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-row">
+      <div class="field">
+        <label for="preset">尺プリセット</label>
+        <select id="preset" name="preset">
+          {% for value, label in production_presets %}
+          <option value="{{ value }}"{{ ' selected' if production_settings.preset == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="script_template">台本構成</label>
+        <select id="script_template" name="script_template">
+          {% for value, label in script_templates %}
+          <option value="{{ value }}"{{ ' selected' if production_settings.script_template == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" style="min-width: 240px;">
+        <label for="tone">トーン</label>
+        <input id="tone" name="tone" type="text" value="{{ production_settings.tone }}" maxlength="200" required />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label for="target_duration_seconds">カスタム目標（秒）</label><input id="target_duration_seconds" name="target_duration_seconds" type="number" min="10" max="3600" value="{{ production_settings.target_duration_seconds }}" required /></div>
+      <div class="field"><label for="min_duration_seconds">最短（秒）</label><input id="min_duration_seconds" name="min_duration_seconds" type="number" min="1" max="3600" value="{{ production_settings.min_duration_seconds }}" required /></div>
+      <div class="field"><label for="max_duration_seconds">最長（秒）</label><input id="max_duration_seconds" name="max_duration_seconds" type="number" min="1" max="3600" value="{{ production_settings.max_duration_seconds }}" required /></div>
+      <div class="field"><label for="min_sections">最小セクション</label><input id="min_sections" name="min_sections" type="number" min="1" max="50" value="{{ production_settings.min_sections }}" required /></div>
+      <div class="field"><label for="max_sections">最大セクション</label><input id="max_sections" name="max_sections" type="number" min="1" max="50" value="{{ production_settings.max_sections }}" required /></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label for="speaking_rate">読み上げ速度</label><input id="speaking_rate" name="speaking_rate" type="number" min="0.5" max="2" step="0.05" value="{{ production_settings.speaking_rate }}" required /></div>
+      <div class="field"><label for="target_character_count">目標文字数（空欄=自動）</label><input id="target_character_count" name="target_character_count" type="number" min="1" max="100000" value="{{ production_settings.target_character_count or '' }}" /></div>
+      <div class="field"><label for="dialogue_ratio">掛け合い比率</label><input id="dialogue_ratio" name="dialogue_ratio" type="number" min="0" max="1" step="0.1" value="{{ production_settings.dialogue_ratio }}" required /></div>
+    </div>
+    <p class="muted">推定目標文字数: 約{{ production_settings.resolved_target_character_count() }}文字 ／ 保存済み希望尺: {{ production_settings.target_duration_seconds }}秒</p>
+    <div class="actions">
+      <button type="submit" name="intent" value="save" class="btn-secondary">設定を保存</button>
+      <button type="submit" name="intent" value="generate"{{ ' disabled' if task_id else '' }}>設定を保存して台本生成</button>
+    </div>
+  </form>
+</div>
+
 <div class="detail-grid">
   <div class="card">
     <h3 class="card-title">Evidence(出典)</h3>

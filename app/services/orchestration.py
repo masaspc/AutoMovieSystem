@@ -137,7 +137,15 @@ def link_script_and_advance(session: Session, project: VideoProject, script: Scr
     Returns:
         blocking findingsが存在した場合True(この場合SCRIPT_REVIEWEDへは進めない)。
     """
-    if project.script_id is None:
+    # 素材生成前は設定変更・手動編集による新しいScript versionへ安全に差し替えられる。
+    # ASSETS_READY以降は音声・字幕との不整合を防ぐため既存script_idを固定する。
+    if project.script_id is None or project.status in {
+        "TOPIC_CREATED",
+        "TOPIC_SCORED",
+        "RESEARCH_READY",
+        "SCRIPT_GENERATED",
+        "SCRIPT_REVIEWED",
+    }:
         project.script_id = script.id
     if project.production_settings is None:
         manifest_settings = (script.source_manifest or {}).get("production_settings")

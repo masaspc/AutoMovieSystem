@@ -55,12 +55,17 @@ uv run python scripts/seed.py
 - status → `SCRIPT_REVIEWED`
 
 尺プリセットは`short`（45秒）、`standard_3min`、`standard_5min`、`standard_8min`、
-`custom`。現時点では管理画面フォームではなく
+`custom`。企画詳細の「動画の制作設定」または
 `POST /api/topics/{topic_id}/generate-script`のJSON bodyで指定する。未指定は`short`。
 
-`speaking_rate`は0.5〜2.0の推定用係数であり、TTSエンジン自体の話速変更ではない。
+`speaking_rate`は0.5〜2.0。VOICEVOXでは`speedScale`、Fake TTSでは生成尺、
+Generic Commandではコマンドテンプレートの`{speed}`へ反映する。
 動画レビューに使う`VideoProject.target_duration_seconds`は、TTS合成後に実測音声尺と
 エンドカード尺から毎回再計算される。
+
+台本生成後、素材準備前までは動画プロジェクト詳細からセクションを編集できる。
+更新・追加・削除・上下移動は即時に新しいScript versionを作り、AI部分再生成はCeleryで
+非同期実行する。素材生成後は音声・字幕との不整合を防ぐため編集不可。
 
 ### 4. 動画生成 (自動)
 

@@ -29,6 +29,7 @@ _REPAIR_EXPAND_FILLER = (
     "補足として具体例を挙げると、実務での活用場面は多岐にわたり、"
     "注意点や導入手順まで丁寧に確認しておくことで失敗を避けやすくなります。"
 )
+_SECTION_JSON_MARKER = "[対象セクションJSON]\n"
 
 
 def _seed_bytes(*parts: str) -> bytes:
@@ -190,6 +191,23 @@ def _repair_script_duration(
     return data
 
 
+def _regenerate_script_section(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict:
+    del seed, operation, schema
+    marker_index = user_prompt.find(_SECTION_JSON_MARKER)
+    if marker_index == -1:
+        return {}
+    try:
+        data = json.loads(user_prompt[marker_index + len(_SECTION_JSON_MARKER) :])
+    except json.JSONDecodeError:
+        return {}
+    data["narration"] = f"{data.get('narration', '')} より分かりやすい表現に改善しました。"
+    for line in data.get("dialogue", []) or []:
+        line["text"] = f"{line.get('text', '')} 分かりやすく補足します。"
+    return data
+
+
 def _classify_comment(
     seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
 ) -> dict:
@@ -231,6 +249,7 @@ def _review_content(seed: bytes, operation: str, user_prompt: str, schema: type[
 _GENERATORS: dict[str, Generator] = {
     "generate_script": _generate_script_content,
     "repair_script_duration": _repair_script_duration,
+    "regenerate_script_section": _regenerate_script_section,
     "classify_comment": _classify_comment,
     "review_content": _review_content,
 }

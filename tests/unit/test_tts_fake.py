@@ -79,6 +79,29 @@ def test_fake_tts_duration_scales_with_text_length(tmp_path: Path) -> None:
     assert long_result.duration_seconds > short_result.duration_seconds
 
 
+def test_fake_tts_speed_scale_shortens_duration(tmp_path: Path) -> None:
+    provider = FakeTTSProvider()
+    text = "十分に長いテスト文章です" * 3
+    normal = asyncio.run(
+        provider.synthesize(
+            text=text,
+            voice="default",
+            output_path=tmp_path / "normal.wav",
+            idempotency_key="normal",
+        )
+    )
+    fast = asyncio.run(
+        provider.synthesize(
+            text=text,
+            voice="default",
+            output_path=tmp_path / "fast.wav",
+            idempotency_key="fast",
+            speed_scale=1.5,
+        )
+    )
+    assert fast.duration_seconds < normal.duration_seconds
+
+
 def test_fake_tts_produces_valid_16khz_mono_wav(tmp_path: Path) -> None:
     provider = FakeTTSProvider()
     output_path = tmp_path / "out.wav"

@@ -7,16 +7,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.logging import get_logger
 from app.db.session import get_db
+from app.models.asset import Asset
 from app.models.channel import Channel
 from app.models.evidence import Evidence
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.video_project import VideoProject
+from app.schemas.production_settings import ProductionSettings
 from app.services.orchestration import (
     _advance_status,  # noqa: SLF001 - オーケストレーションの該当ステップを再利用する
     _ensure_dummy_evidence,  # noqa: SLF001
@@ -33,6 +36,23 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["web-topics"])
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+PRODUCTION_PRESETS = (
+    ("short", "Short（30〜60秒）"),
+    ("standard_3min", "標準3分（150〜210秒）"),
+    ("standard_5min", "標準5分（270〜330秒）"),
+    ("standard_8min", "標準8分（420〜540秒）"),
+    ("custom", "カスタム"),
+)
+SCRIPT_TEMPLATES = (
+    ("explainer", "解説"),
+    ("ranking", "ランキング"),
+    ("problem_solution", "問題解決"),
+    ("comparison", "比較"),
+    ("story", "ストーリー"),
+    ("dialogue", "掛け合い"),
+    ("shorts", "Shorts"),
+)
 
 
 @router.get("/topics", response_class=HTMLResponse)
@@ -146,6 +166,15 @@ def topic_detail(
         .order_by(VideoProject.generation.desc())
         .first()
     )
+    latest_manifest = scripts[0].source_manifest if scripts else {}
+    raw_production_settings = (
+        video_project.production_settings
+        if video_project and video_project.production_settings
+        else (latest_manifest or {}).get("production_settings")
+    )
+    production_settings = ProductionSettings.model_validate(
+        raw_production_settings or ProductionSettings().model_dump()
+    )
 
     csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
@@ -157,6 +186,9 @@ def topic_detail(
             "evidence_list": evidence_list,
             "scripts": scripts,
             "video_project": video_project,
+            "production_settings": production_settings,
+            "production_presets": PRODUCTION_PRESETS,
+            "script_templates": SCRIPT_TEMPLATES,
             "csrf_token": csrf_token,
             "task_id": task_id,
             "task_label": task_label,
@@ -164,6 +196,123 @@ def topic_detail(
     )
     set_csrf_cookie(response, csrf_token)
     return response
+
+
+def _production_settings_from_form(
+    *,
+    preset: str,
+    target_duration_seconds: int,
+    min_duration_seconds: int,
+    max_duration_seconds: int,
+    target_character_count: int | None,
+    min_sections: int,
+    max_sections: int,
+    speaking_rate: float,
+    script_template: str,
+    tone: str,
+    dialogue_ratio: float,
+) -> ProductionSettings:
+    if preset == "custom":
+        values: dict[str, object] = {
+            "preset": preset,
+            "target_duration_seconds": target_duration_seconds,
+            "min_duration_seconds": min_duration_seconds,
+            "max_duration_seconds": max_duration_seconds,
+            "min_sections": min_sections,
+            "max_sections": max_sections,
+        }
+    else:
+        values = ProductionSettings.from_preset(preset).model_dump()  # type: ignore[arg-type]
+    values.update(
+        {
+            "target_character_count": target_character_count,
+            "speaking_rate": speaking_rate,
+            "script_template": script_template,
+            "tone": tone,
+            "dialogue_ratio": dialogue_ratio,
+        }
+    )
+    return ProductionSettings.model_validate(values)
+
+
+@router.post("/topics/{topic_id}/production-settings")
+def save_production_settings(
+    topic_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    preset: Annotated[str, Form()],
+    target_duration_seconds: Annotated[int, Form()],
+    min_duration_seconds: Annotated[int, Form()],
+    max_duration_seconds: Annotated[int, Form()],
+    min_sections: Annotated[int, Form()],
+    max_sections: Annotated[int, Form()],
+    speaking_rate: Annotated[float, Form()],
+    script_template: Annotated[str, Form()],
+    tone: Annotated[str, Form()],
+    dialogue_ratio: Annotated[float, Form()],
+    intent: Annotated[str, Form()] = "save",
+    target_character_count: Annotated[int | None, Form()] = None,
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    topic = db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail=f"Topic not found: {topic_id}")
+    try:
+        production_settings = _production_settings_from_form(
+            preset=preset,
+            target_duration_seconds=target_duration_seconds,
+            min_duration_seconds=min_duration_seconds,
+            max_duration_seconds=max_duration_seconds,
+            target_character_count=target_character_count,
+            min_sections=min_sections,
+            max_sections=max_sections,
+            speaking_rate=speaking_rate,
+            script_template=script_template,
+            tone=tone,
+            dialogue_ratio=dialogue_ratio,
+        )
+    except (ValidationError, ValueError) as exc:
+        return RedirectResponse(
+            url=with_message(f"/topics/{topic_id}", error=f"制作設定が不正です: {exc}"),
+            status_code=303,
+        )
+
+    project = _get_or_create_video_project(db, topic_id=topic.id)
+    if (
+        project.status
+        not in {
+            "TOPIC_CREATED",
+            "TOPIC_SCORED",
+            "RESEARCH_READY",
+            "SCRIPT_GENERATED",
+            "SCRIPT_REVIEWED",
+        }
+        or db.query(Asset).filter(Asset.video_project_id == project.id).first() is not None
+    ):
+        return RedirectResponse(
+            url=with_message(
+                f"/topics/{topic_id}",
+                error="素材生成後は制作設定を変更できません。新しい動画プロジェクトで作成してください",
+            ),
+            status_code=303,
+        )
+    project.production_settings = production_settings.model_dump()
+    _advance_status(project, "TOPIC_SCORED")
+    _ensure_dummy_evidence(db, topic_id=topic.id)
+    _advance_status(project, "RESEARCH_READY")
+    db.commit()
+
+    if intent == "generate":
+        task = generate_script_task.delay(topic_id)
+        return RedirectResponse(
+            url=f"/topics/{topic_id}?task_id={task.id}&task_label=台本生成",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=with_message(f"/topics/{topic_id}", info="制作設定を保存しました"),
+        status_code=303,
+    )
 
 
 @router.post("/topics/{topic_id}/generate-script")

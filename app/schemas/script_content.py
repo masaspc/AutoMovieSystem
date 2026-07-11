@@ -19,9 +19,9 @@ class ScriptDialogueLine(BaseModel):
 
 
 class ScriptSection(BaseModel):
-    heading: str
-    narration: str
-    visual_instruction: str
+    heading: str = Field(min_length=1, max_length=500)
+    narration: str = Field(min_length=1, max_length=50_000)
+    visual_instruction: str = Field(min_length=1, max_length=2_000)
     evidence_ids: list[str] = Field(default_factory=list)
     dialogue: list[ScriptDialogueLine] = Field(default_factory=list)
 

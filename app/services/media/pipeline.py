@@ -29,6 +29,7 @@ from app.models.job_run import JobRun
 from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.tts.base import TTSProvider
+from app.schemas.production_settings import ProductionSettings
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
 from app.services.media import characters, dialogue, renderer, subtitles
 from app.services.media.probe import inspect_rendered_video
@@ -187,8 +188,10 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
 # ---------------------------------------------------------------------------
 
 
-def build_section_idempotency_key(video_project_id: str, section_index: int, narration: str) -> str:
-    text_hash = hashlib.sha256(narration.encode("utf-8")).hexdigest()
+def build_section_idempotency_key(
+    video_project_id: str, section_index: int, narration: str, speed_scale: float = 1.0
+) -> str:
+    text_hash = hashlib.sha256(f"{narration}|speed={speed_scale}".encode()).hexdigest()
     return f"synthesize_audio:{video_project_id}:{section_index}:{text_hash}"
 
 
@@ -212,6 +215,10 @@ async def synthesize_audio(
     script = _get_script(session, project)
 
     settings = get_settings()
+    production_settings = ProductionSettings.model_validate(
+        project.production_settings or ProductionSettings().model_dump()
+    )
+    speed_scale = production_settings.speaking_rate
     dialogue_enabled = dialogue.dialogue_script_enabled(settings)
     speech_lines = dialogue.extract_speech_lines(script.body or {}, settings=settings)
     if not speech_lines:
@@ -221,8 +228,10 @@ async def synthesize_audio(
     for line in speech_lines:
         index = line.index
         narration = line.text
-        idempotency_key = build_section_idempotency_key(video_project_id, index, narration)
-        text_hash = hashlib.sha256(narration.encode("utf-8")).hexdigest()
+        idempotency_key = build_section_idempotency_key(
+            video_project_id, index, narration, speed_scale
+        )
+        text_hash = hashlib.sha256(f"{narration}|speed={speed_scale}".encode()).hexdigest()
         relative_path = f"videos/{video_project_id}/audio/line_{index:02d}_{text_hash[:12]}.wav"
         output_path = resolve_generated_path(relative_path)
 
@@ -253,6 +262,7 @@ async def synthesize_audio(
                     ),
                     output_path=_output_path,
                     idempotency_key=_idempotency_key,
+                    speed_scale=speed_scale,
                 )
                 checksum = result.checksum
                 duration_seconds = result.duration_seconds
@@ -273,6 +283,7 @@ async def synthesize_audio(
                     "emotion": _emotion,
                     "duration_seconds": duration_seconds,
                     "sample_rate": sample_rate,
+                    "speed_scale": speed_scale,
                 },
             )
             session.flush()

@@ -65,6 +65,9 @@
 - [x] 長尺・台本自由度 Phase 2: ProductionSettings(JSON)+Alembic、5尺プリセット、
       7構成テンプレート、設定checksum付き冪等生成、最大2回の尺修復、Evidence保全、
       TTS実測期待尺の毎回更新、JSON API入力、運用ドキュメント更新
+- [x] 制作設定・台本編集UI: 企画詳細で尺/構成/トーン/話速を保存して生成、動画詳細で
+      希望尺と推定尺を表示、素材生成前のセクション更新/追加/削除/並べ替え/AI部分再生成、
+      VOICEVOX speedScale・Fake TTS・Generic Command `{speed}`への実話速反映
 
 ## 未解決事項
 
@@ -72,8 +75,6 @@
 - LLM料金表(MODEL_PRICING)と operation別上限(OPERATION_LIMITS)はコード内定数。料金改定時はコード変更が必要(MVP許容)
 - スコア再計算は idempotency_key 固定のため初回のみ。再スコアリング運用は将来対応
 - Review.score 採点式(blocking-25/warning-5)は暫定。運用要件確定後に見直し
-- ProductionSettingsの管理画面入力フォームは未実装。現状はJSON APIから指定する
-- speaking_rateは台本推定用で、VOICEVOX等の実TTS話速にはまだ反映しない
 - CSRF鍵は SECRET_ENCRYPTION_KEY 未設定時に開発用フォールバック。本番はfail-fast必須化を Phase 8 セキュリティレビューで確認
 - ffmpeg/docker は PATH 未反映。設定のパス解決(D-007)で吸収する
 - ADR-0005 の reconcile 実装は Phase 5 で完了(FakeYouTubeProvider + RealYouTubeProvider 共通契約。

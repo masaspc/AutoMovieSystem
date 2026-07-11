@@ -23,14 +23,14 @@ _CHUNK_SECONDS = 0.2
 _AMPLITUDE = 12000
 
 
-def _duration_for_text(text: str) -> float:
-    return max(_MIN_DURATION_SECONDS, len(text) * _SECONDS_PER_CHAR)
+def _duration_for_text(text: str, speed_scale: float = 1.0) -> float:
+    return max(_MIN_DURATION_SECONDS, len(text) * _SECONDS_PER_CHAR / speed_scale)
 
 
-def _generate_pcm_samples(text: str) -> list[int]:
+def _generate_pcm_samples(text: str, speed_scale: float = 1.0) -> list[int]:
     """テキストのSHA256をシードに、正弦波+無音を交互配置したPCMサンプル列を生成する。"""
     seed = hashlib.sha256(text.encode("utf-8")).digest()
-    duration_seconds = _duration_for_text(text)
+    duration_seconds = _duration_for_text(text, speed_scale)
     total_samples = int(duration_seconds * SAMPLE_RATE)
     chunk_samples = max(1, int(_CHUNK_SECONDS * SAMPLE_RATE))
 
@@ -55,9 +55,9 @@ def _generate_pcm_samples(text: str) -> list[int]:
     return samples
 
 
-def synthesize_wav_bytes(text: str) -> bytes:
+def synthesize_wav_bytes(text: str, speed_scale: float = 1.0) -> bytes:
     """テキストから決定的なWAVバイト列を生成する(16kHz mono 16bit)。"""
-    samples = _generate_pcm_samples(text)
+    samples = _generate_pcm_samples(text, speed_scale)
     frames = struct.pack(f"<{len(samples)}h", *samples)
 
     buffer = io.BytesIO()
@@ -79,13 +79,14 @@ class FakeTTSProvider:
         voice: str,
         output_path: Path,
         idempotency_key: str,
+        speed_scale: float = 1.0,
     ) -> TTSResult:
-        wav_bytes = synthesize_wav_bytes(text)
+        wav_bytes = synthesize_wav_bytes(text, speed_scale)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(wav_bytes)
 
         checksum = hashlib.sha256(wav_bytes).hexdigest()
-        duration_seconds = _duration_for_text(text)
+        duration_seconds = _duration_for_text(text, speed_scale)
 
         return TTSResult(
             output_path=output_path,
