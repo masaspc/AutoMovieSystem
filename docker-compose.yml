@@ -29,10 +29,14 @@ services:
     image: voicevox/voicevox_engine:cpu-ubuntu22.04-0.25.1
     profiles: ["voicevox"]
     ports:
-      - "127.0.0.1:50021:50021"
+      # ホスト側50021が別プロセス(VS Code等)に使われている環境があるため50022で公開。
+      # app/worker/beatはDocker内部ネットワークのvoicevox:50021へ直接接続するため、
+      # このホスト公開ポートはホストからの動作確認用にすぎず変更しても機能に影響しない。
+      - "127.0.0.1:50022:50021"
     healthcheck:
-      test:
-        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:50021/version', timeout=2).read()"]
+      # イメージにpython/python3が含まれておらずurllib版healthcheckは常に失敗するため、
+      # イメージに存在するcurlを使う。
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:50021/version"]
       interval: 5s
       timeout: 3s
       retries: 30

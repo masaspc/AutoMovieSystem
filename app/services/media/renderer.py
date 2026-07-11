@@ -199,10 +199,21 @@ def _build_audio_track(
         input_args += ["-i", str(p)]
 
     n = len(section_audio_paths)
-    concat_inputs = "".join(f"[{i}:a]" for i in range(n))
+    # concatフィルター直結だと、入力WAVのチャンネルレイアウトが推測値のままとなり、
+    # 後段のaresampleとの境界でネゴシエーションに失敗することがある
+    # (「Cannot select channel layout for the link between filters」)。
+    # 連結前に各入力を明示的にmonoへ揃えて回避する。
+    formatted_inputs = "".join(
+        f"[{i}:a]aformat=channel_layouts=mono[a{i}];" for i in range(n)
+    )
+    concat_inputs = "".join(f"[a{i}]" for i in range(n))
+    # loudnorm通過後も出力のチャンネルレイアウトが未確定のままとなり、最終aresampleで
+    # 同じネゴシエーション失敗が起きるため、loudnormの直後にも明示指定を挟む。
     filter_complex = (
+        f"{formatted_inputs}"
         f"{concat_inputs}concat=n={n}:v=0:a=1[concatenated];"
-        f"[concatenated]loudnorm=I=-16:TP=-1.5:LRA=11,aresample={AUDIO_SAMPLE_RATE}[outa]"
+        f"[concatenated]loudnorm=I=-16:TP=-1.5:LRA=11,"
+        f"aformat=channel_layouts=mono,aresample={AUDIO_SAMPLE_RATE}[outa]"
     )
     args = [
         "-y",

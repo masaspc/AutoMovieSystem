@@ -18,6 +18,23 @@ os.environ.setdefault("APP_ENV", "test")
 # (環境変数は .env より優先される)。CIが設定した値は個別テスト側の想定と一致させる。
 os.environ["ADMIN_PASSWORD"] = ""
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
+# 同様に LLM_PROVIDER 等が開発者ローカルの .env(local/anthropic等)に設定されていても、
+# ユニットテストが実API/実ローカルLLMへ接続しないよう常に fake へ固定する
+# (絶対原則: テストで実APIを呼ばない)。
+os.environ["LLM_PROVIDER"] = "fake"
+# 個別ポリシーは未設定(空文字)にし、LLM_PROVIDER=fake へフォールバックさせる
+# (.env.example のデフォルトと同じ挙動。空文字なら LLM_PROVIDER に従う: D-020)。
+os.environ["LLM_PROVIDER_LOW"] = ""
+os.environ["LLM_PROVIDER_MID"] = ""
+os.environ["LLM_PROVIDER_HIGH"] = ""
+os.environ["TTS_PROVIDER"] = "fake"
+os.environ["YOUTUBE_PROVIDER"] = "fake"
+# DIALOGUE_SCRIPT_ENABLED/CHARACTER_RENDER_ENABLED も同様。開発者ローカルの .env で
+# trueにしていると、ダミー画像・音声を使う既存テストがPillowでの読み込み等に失敗する。
+# 個別にこの機能を検証するテストは Settings(...) 直接構築か monkeypatch.setenv で
+# 明示的に有効化しており、この既定値(.env.example相当)を上書きするため影響しない。
+os.environ["DIALOGUE_SCRIPT_ENABLED"] = "false"
+os.environ["CHARACTER_RENDER_ENABLED"] = "false"
 
 import app.models  # noqa: F401  metadataにモデルを登録するため import
 from app.core.config import get_settings
