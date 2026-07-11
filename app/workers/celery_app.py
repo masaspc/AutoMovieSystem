@@ -16,6 +16,7 @@ celery_app = Celery(
         "app.workers.tasks.health",
         "app.workers.tasks.scripts",
         "app.workers.tasks.media",
+        "app.workers.tasks.reviews",
         "app.workers.tasks.publishing",
         "app.workers.tasks.analytics",
     ],

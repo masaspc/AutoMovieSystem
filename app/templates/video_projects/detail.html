@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, task_banner %}
 {% block title %}動画プロジェクト詳細 | AutoMovie{% endblock %}
 {% block content %}
+{{ task_banner(task_id, task_label, "/video-projects/" ~ project.id) }}
 <div class="page-header">
   <div>
     <h2>{{ topic.title if topic else "動画プロジェクト" }}</h2>
@@ -12,7 +13,7 @@
     {% if next_action %}
     <form class="inline" method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <button type="submit">▶ {{ next_action[0] }}</button>
+      <button type="submit"{{ ' disabled' if task_id else '' }}>▶ {{ next_action[0] }}</button>
     </form>
     {% endif %}
   </div>
@@ -110,11 +111,11 @@
       <div class="actions">
         <form class="inline" method="post" action="/video-projects/{{ project.id }}/approve">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button type="submit">承認</button>
+          <button type="submit"{{ ' disabled' if task_id else '' }}>承認</button>
         </form>
         <form class="inline" method="post" action="/video-projects/{{ project.id }}/reject">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button type="submit" class="btn-danger">却下</button>
+          <button type="submit" class="btn-danger"{{ ' disabled' if task_id else '' }}>却下</button>
         </form>
       </div>
       <p class="muted" style="margin-bottom: 0;">決裁者はログイン中のユーザーとして記録されます。</p>
@@ -126,7 +127,7 @@
       {% if next_action %}
       <form method="post" action="/video-projects/{{ project.id }}/pipeline/{{ next_action[1] }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button type="submit">▶ {{ next_action[0] }}</button>
+        <button type="submit"{{ ' disabled' if task_id else '' }}>▶ {{ next_action[0] }}</button>
       </form>
       {% else %}
       <p class="muted" style="margin: 0;">現在実行可能なパイプラインステップはありません(失敗状態の場合は <a href="/jobs">ジョブ</a> から再実行してください)</p>

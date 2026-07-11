@@ -16,6 +16,18 @@
 {%- endif -%}
 {%- endmacro %}
 
+{% macro task_banner(task_id, task_label, redirect_url) -%}
+{% if task_id %}
+<div class="flash flash-warning task-banner" id="task-banner"
+     hx-get="/tasks/{{ task_id }}/status?label={{ task_label | urlencode }}&redirect_url={{ redirect_url | urlencode }}"
+     hx-trigger="load, every 2s"
+     hx-swap="outerHTML">
+  <span class="task-spinner"></span>
+  <span>{{ task_label }}を実行中です…(自動的に更新されます。ページを閉じても処理は続行します)</span>
+</div>
+{% endif %}
+{%- endmacro %}
+
 {% macro progress_bar(ratio) -%}
 {%- set pct = ((ratio or 0) * 100) | round(1) -%}
 {%- set width = pct if pct < 100 else 100 -%}

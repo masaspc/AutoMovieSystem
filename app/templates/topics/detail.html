@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, task_banner %}
 {% block title %}企画詳細 - {{ topic.title }} | AutoMovie{% endblock %}
 {% block content %}
+{{ task_banner(task_id, task_label, "/topics/" ~ topic.id) }}
 <div class="page-header">
   <div>
     <h2>{{ topic.title }}</h2>
@@ -11,11 +12,11 @@
     {{ status_badge(topic.status) }}
     <form class="inline" method="post" action="/topics/{{ topic.id }}/generate-script">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <button type="submit">台本生成</button>
+      <button type="submit"{{ ' disabled' if task_id else '' }}>台本生成</button>
     </form>
     <form class="inline" method="post" action="/topics/{{ topic.id }}/create-video-project">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <button type="submit" class="btn-secondary">動画プロジェクト作成</button>
+      <button type="submit" class="btn-secondary"{{ ' disabled' if task_id else '' }}>動画プロジェクト作成</button>
     </form>
   </div>
 </div>

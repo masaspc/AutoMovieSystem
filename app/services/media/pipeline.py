@@ -304,6 +304,18 @@ async def synthesize_audio(
             assert job_result.result is not None
             assets.append(job_result.result)
 
+    # レンダリング・自動レビューが尺の妥当性判定に使うtarget_duration_secondsを、
+    # セクション尺が判明したこのタイミングで一度だけ算出する。呼び出し元(web UIの
+    # 手動ステップ実行・orchestrationの一括実行のいずれでも)ここで確実に設定される。
+    if project.target_duration_seconds is None:
+        total_audio_seconds = sum(
+            float((a.meta or {}).get("duration_seconds", 0.0)) for a in assets
+        )
+        project.target_duration_seconds = round(
+            total_audio_seconds + renderer.DEFAULT_ENDCARD_DURATION_SECONDS
+        )
+        session.flush()
+
     return assets
 
 

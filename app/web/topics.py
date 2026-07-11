@@ -17,18 +17,16 @@ from app.models.evidence import Evidence
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.video_project import VideoProject
-from app.providers.llm.factory import get_llm_provider
-from app.services.jobs import JobInProgressError
 from app.services.orchestration import (
     _advance_status,  # noqa: SLF001 - オーケストレーションの該当ステップを再利用する
     _ensure_dummy_evidence,  # noqa: SLF001
     _get_or_create_video_project,  # noqa: SLF001
+    link_script_and_advance,
 )
-from app.services.scripts.generator import TopicNotFoundError as ScriptTopicNotFoundError
-from app.services.scripts.generator import generate_script
 from app.services.topics import importer
 from app.services.topics.scoring import TopicNotFoundError, score_topic
 from app.web.common import require_csrf, with_message
+from app.workers.tasks.scripts import generate_script_task
 
 logger = get_logger(__name__)
 
@@ -127,7 +125,13 @@ def score_topic_route(
 
 
 @router.get("/topics/{topic_id}", response_class=HTMLResponse)
-def topic_detail(topic_id: str, request: Request, db: DbSession) -> HTMLResponse:
+def topic_detail(
+    topic_id: str,
+    request: Request,
+    db: DbSession,
+    task_id: str | None = None,
+    task_label: str | None = None,
+) -> HTMLResponse:
     topic = db.get(Topic, topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail=f"Topic not found: {topic_id}")
@@ -154,6 +158,8 @@ def topic_detail(topic_id: str, request: Request, db: DbSession) -> HTMLResponse
             "scripts": scripts,
             "video_project": video_project,
             "csrf_token": csrf_token,
+            "task_id": task_id,
+            "task_label": task_label,
         },
     )
     set_csrf_cookie(response, csrf_token)
@@ -161,32 +167,20 @@ def topic_detail(topic_id: str, request: Request, db: DbSession) -> HTMLResponse
 
 
 @router.post("/topics/{topic_id}/generate-script")
-async def generate_script_route(
+def generate_script_route(
     topic_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        script = await generate_script(db, topic_id=topic_id, provider=get_llm_provider())
-    except ScriptTopicNotFoundError as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return RedirectResponse(
-            url=with_message(f"/topics/{topic_id}", error="実行中です"), status_code=303
-        )
-    except Exception as exc:  # noqa: BLE001 - 予算超過・LLMスキーマ不正等をユーザー向けに表示する
-        db.commit()
-        return RedirectResponse(
-            url=with_message(f"/topics/{topic_id}", error=str(exc)), status_code=303
-        )
+    topic = db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail=f"Topic not found: {topic_id}")
 
-    projects = db.query(VideoProject).filter(VideoProject.topic_id == topic_id).all()
-    for project in projects:
-        if project.script_id is None:
-            project.script_id = script.id
-    db.commit()
-    return RedirectResponse(url=f"/topics/{topic_id}", status_code=303)
+    # LLM呼び出しは数分かかることがあるため、リクエストをブロックせずCeleryへ
+    # dispatchする。完了はタスク進行状況ポーリング(/tasks/{task_id}/status)経由で
+    # 画面へ反映される(台本のVideoProjectへの紐付けはタスク側で行う)。
+    task = generate_script_task.delay(topic_id)
+    redirect_url = f"/topics/{topic_id}?task_id={task.id}&task_label=台本生成"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/topics/{topic_id}/create-video-project")
@@ -202,6 +196,16 @@ def create_video_project_route(
     _advance_status(project, "TOPIC_SCORED")
     _ensure_dummy_evidence(db, topic_id=topic.id)
     _advance_status(project, "RESEARCH_READY")
+
+    latest_script = (
+        db.query(Script)
+        .filter(Script.topic_id == topic.id)
+        .order_by(Script.version.desc())
+        .first()
+    )
+    if latest_script is not None:
+        link_script_and_advance(db, project, latest_script)
+
     db.commit()
 
     logger.info("video_project_created_from_topic", topic_id=topic_id, video_project_id=project.id)

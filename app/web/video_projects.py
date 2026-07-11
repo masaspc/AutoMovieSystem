@@ -26,29 +26,21 @@ from app.models.script import Script
 from app.models.topic import Topic
 from app.models.video_metric_daily import VideoMetricDaily
 from app.models.video_project import VideoProject
-from app.providers.llm.factory import get_llm_provider
-from app.providers.tts.factory import get_tts_provider
-from app.providers.youtube.factory import get_youtube_provider
-from app.services.jobs import JobInProgressError
 from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
-from app.services.media.pipeline import (
-    ScriptNotFoundError,
-    VideoProjectNotFoundError,
-    prepare_assets,
-    render_video,
-    synthesize_audio,
-)
-from app.services.publishing.uploader import upload_video
-from app.services.reviews.service import run_automated_review
 from app.web.common import require_csrf, with_message
+from app.workers.tasks.media import (
+    prepare_assets_task,
+    render_video_task,
+    synthesize_audio_task,
+)
+from app.workers.tasks.publishing import upload_video_task
+from app.workers.tasks.reviews import run_automated_review_task
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["web-video-projects"])
 
 DbSession = Annotated[Session, Depends(get_db)]
-
-_NOT_FOUND_ERRORS = (VideoProjectNotFoundError, ScriptNotFoundError)
 
 
 def _latest_reviews(session: Session, video_project_id: str) -> list[Review]:
@@ -113,7 +105,13 @@ def _next_pipeline_action(db: Session, project: VideoProject) -> tuple[str, str]
 
 
 @router.get("/video-projects/{video_project_id}", response_class=HTMLResponse)
-def video_project_detail(video_project_id: str, request: Request, db: DbSession) -> HTMLResponse:
+def video_project_detail(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    task_id: str | None = None,
+    task_label: str | None = None,
+) -> HTMLResponse:
     project = db.get(VideoProject, video_project_id)
     if project is None:
         raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
@@ -191,6 +189,8 @@ def video_project_detail(video_project_id: str, request: Request, db: DbSession)
             "next_action": next_action,
             "dialogue_script_enabled": dialogue_script_enabled(),
             "csrf_token": csrf_token,
+            "task_id": task_id,
+            "task_label": task_label,
         },
     )
     set_csrf_cookie(response, csrf_token)
@@ -204,46 +204,37 @@ def _redirect_back(
     return RedirectResponse(url=url, status_code=303)
 
 
+def _dispatch_task(video_project_id: str, task_id: str, label: str) -> RedirectResponse:
+    """パイプラインの各ステップをCeleryへdispatchした後、進行状況ポーリング付きで
+    動画プロジェクト詳細ページへ戻る(`/tasks/{task_id}/status` が完了を検知する)。
+    """
+    url = f"/video-projects/{video_project_id}?task_id={task_id}&task_label={label}"
+    return RedirectResponse(url=url, status_code=303)
+
+
+def _require_video_project(video_project_id: str, db: Session) -> None:
+    if db.get(VideoProject, video_project_id) is None:
+        raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
+
+
 @router.post("/video-projects/{video_project_id}/pipeline/prepare-assets")
 def pipeline_prepare_assets(
     video_project_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        prepare_assets(db, video_project_id=video_project_id)
-    except _NOT_FOUND_ERRORS as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return _redirect_back(video_project_id, error="実行中です")
-    except Exception as exc:  # noqa: BLE001 - サービス例外をユーザー向けに表示する(500にしない)
-        db.commit()
-        return _redirect_back(video_project_id, error=str(exc))
-    db.commit()
-    logger.info("pipeline_prepare_assets_completed", video_project_id=video_project_id)
-    return RedirectResponse(url=f"/video-projects/{video_project_id}", status_code=303)
+    _require_video_project(video_project_id, db)
+    task = prepare_assets_task.delay(video_project_id)
+    return _dispatch_task(video_project_id, task.id, "素材準備")
 
 
 @router.post("/video-projects/{video_project_id}/pipeline/synthesize-audio")
-async def pipeline_synthesize_audio(
+def pipeline_synthesize_audio(
     video_project_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        await synthesize_audio(db, video_project_id=video_project_id, provider=get_tts_provider())
-    except _NOT_FOUND_ERRORS as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return _redirect_back(video_project_id, error="実行中です")
-    except Exception as exc:  # noqa: BLE001 - サービス例外をユーザー向けに表示する(500にしない)
-        db.commit()
-        return _redirect_back(video_project_id, error=str(exc))
-    db.commit()
-    logger.info("pipeline_synthesize_audio_completed", video_project_id=video_project_id)
-    return RedirectResponse(url=f"/video-projects/{video_project_id}", status_code=303)
+    _require_video_project(video_project_id, db)
+    task = synthesize_audio_task.delay(video_project_id)
+    return _dispatch_task(video_project_id, task.id, "音声合成")
 
 
 @router.post("/video-projects/{video_project_id}/pipeline/render")
@@ -251,49 +242,23 @@ def pipeline_render(
     video_project_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        render_video(db, video_project_id=video_project_id)
-    except _NOT_FOUND_ERRORS as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return _redirect_back(video_project_id, error="実行中です")
-    except Exception as exc:  # noqa: BLE001
-        # PipelineRenderError発生時はサービス層で既にRENDER_FAILEDへ遷移しflush済みのため、
-        # rollbackせずcommitして状態を保持する。
-        db.commit()
-        return _redirect_back(video_project_id, error=str(exc))
-    db.commit()
-    logger.info("pipeline_render_completed", video_project_id=video_project_id)
-    return RedirectResponse(url=f"/video-projects/{video_project_id}", status_code=303)
+    _require_video_project(video_project_id, db)
+    task = render_video_task.delay(video_project_id)
+    return _dispatch_task(video_project_id, task.id, "レンダリング")
 
 
 @router.post("/video-projects/{video_project_id}/pipeline/review")
-async def pipeline_review(
+def pipeline_review(
     video_project_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        await run_automated_review(
-            db, video_project_id=video_project_id, provider=get_llm_provider()
-        )
-    except _NOT_FOUND_ERRORS as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return _redirect_back(video_project_id, error="実行中です")
-    except Exception as exc:  # noqa: BLE001
-        db.commit()
-        return _redirect_back(video_project_id, error=str(exc))
-    db.commit()
-    logger.info("pipeline_review_completed", video_project_id=video_project_id)
-    return RedirectResponse(url=f"/video-projects/{video_project_id}", status_code=303)
+    _require_video_project(video_project_id, db)
+    task = run_automated_review_task.delay(video_project_id)
+    return _dispatch_task(video_project_id, task.id, "自動レビュー")
 
 
 @router.post("/video-projects/{video_project_id}/pipeline/upload")
-async def pipeline_upload(
+def pipeline_upload(
     video_project_id: str,
     request: Request,
     db: DbSession,
@@ -301,27 +266,12 @@ async def pipeline_upload(
     operator: Annotated[str, Depends(require_admin)],
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
-    try:
-        publication = await upload_video(
-            db, video_project_id=video_project_id, provider=get_youtube_provider()
-        )
-    except _NOT_FOUND_ERRORS as exc:
-        db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except JobInProgressError:
-        db.rollback()
-        return _redirect_back(video_project_id, error="実行中です")
-    except Exception as exc:  # noqa: BLE001
-        db.commit()
-        return _redirect_back(video_project_id, error=str(exc))
-    db.commit()
+    _require_video_project(video_project_id, db)
+    task = upload_video_task.delay(video_project_id)
     logger.info(
-        "pipeline_upload_completed",
-        video_project_id=video_project_id,
-        publication_id=publication.id,
-        operator=operator,
+        "pipeline_upload_dispatched", video_project_id=video_project_id, operator=operator
     )
-    return RedirectResponse(url=f"/video-projects/{video_project_id}", status_code=303)
+    return _dispatch_task(video_project_id, task.id, "アップロード")
 
 
 @router.get("/media/{video_project_id}")

@@ -15,6 +15,7 @@ from app.models.review import Review
 from app.models.video_project import VideoProject
 from app.services.reviews import approval
 from app.services.state_machine import InvalidTransitionError
+from app.web.common import with_message
 
 router = APIRouter(tags=["web-approvals"])
 
@@ -66,12 +67,11 @@ def show_review(
     return response
 
 
-def _handle_transition_errors(exc: Exception) -> None:
-    if isinstance(exc, approval.VideoProjectNotFoundError):
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if isinstance(exc, InvalidTransitionError):
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    raise exc
+def _review_redirect(
+    video_project_id: str, *, error: str | None = None
+) -> RedirectResponse:
+    url = with_message(f"/video-projects/{video_project_id}/review", error=error)
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/video-projects/{video_project_id}/approve")
@@ -91,9 +91,16 @@ def approve_video_project(
         approval.approve(
             db, video_project_id=video_project_id, decided_by=admin_user, reason=reason
         )
-    except (approval.VideoProjectNotFoundError, InvalidTransitionError) as exc:
+    except approval.VideoProjectNotFoundError as exc:
         db.rollback()
-        _handle_transition_errors(exc)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidTransitionError:
+        # 二重送信(2連続クリック等)で1回目が既に成立済みの場合にここへ来ることがある。
+        # 生JSONを表示せず、レビュー画面へ戻して現在の状態をそのまま見せる。
+        db.rollback()
+        return _review_redirect(
+            video_project_id, error="既に処理済み、または現在の状態では実行できません"
+        )
     db.commit()
     return RedirectResponse(url=f"/video-projects/{video_project_id}/review", status_code=303)
 
@@ -113,8 +120,13 @@ def reject_video_project(
 
     try:
         approval.reject(db, video_project_id=video_project_id, decided_by=admin_user, reason=reason)
-    except (approval.VideoProjectNotFoundError, InvalidTransitionError) as exc:
+    except approval.VideoProjectNotFoundError as exc:
         db.rollback()
-        _handle_transition_errors(exc)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidTransitionError:
+        db.rollback()
+        return _review_redirect(
+            video_project_id, error="既に処理済み、または現在の状態では実行できません"
+        )
     db.commit()
     return RedirectResponse(url=f"/video-projects/{video_project_id}/review", status_code=303)

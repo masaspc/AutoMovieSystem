@@ -55,7 +55,6 @@ from app.services.topics.scoring import score_topic
 logger = get_logger(__name__)
 
 DEMO_EVIDENCE_SOURCE_URL = "https://example.com/evidence"
-DEFAULT_ENDCARD_DURATION_SECONDS = 3.0
 
 _MEDIA_PIPELINE_ENTRY_STATUSES: tuple[str, ...] = ("SCRIPT_REVIEWED", "ASSETS_READY")
 
@@ -126,6 +125,30 @@ def _recover_if_failed(session: Session, project: VideoProject) -> None:
     if action is not None:
         action(session, project.id)
         session.flush()
+
+
+def link_script_and_advance(session: Session, project: VideoProject, script: Script) -> bool:
+    """既存のVideoProjectへScriptを紐付け、検査結果に応じて状態を前進させる。
+
+    台本生成と動画プロジェクト作成が別々のタイミングで行われる場合(Web UIの個別ボタン
+    操作、Celeryタスク完了後の紐付け等)でも同じロジックへ一本化する。
+
+    Returns:
+        blocking findingsが存在した場合True(この場合SCRIPT_REVIEWEDへは進めない)。
+    """
+    if project.script_id is None:
+        project.script_id = script.id
+    _advance_status(project, "SCRIPT_GENERATED")
+
+    findings = inspect_script_with_history(session, script)
+    blocking_findings = [f for f in findings if f.severity == "blocking"]
+    if blocking_findings:
+        return True
+
+    if script.status == "draft":
+        script.status = "reviewed"
+    _advance_status(project, "SCRIPT_REVIEWED")
+    return False
 
 
 def _advance_status(project: VideoProject, target: str) -> None:
@@ -271,18 +294,8 @@ async def run_production_pipeline(
 
     # 3. 台本生成(冪等) -> SCRIPT_GENERATED -> 検査通過で SCRIPT_REVIEWED
     script = await generate_script(session, topic_id=topic.id, provider=providers.llm)
-    if project.script_id is None:
-        project.script_id = script.id
-    _advance_status(project, "SCRIPT_GENERATED")
-
-    findings = inspect_script_with_history(session, script)
-    blocking_findings = [f for f in findings if f.severity == "blocking"]
-    if blocking_findings:
+    if link_script_and_advance(session, project, script):
         skipped_steps.append("script_review_blocking_findings")
-    else:
-        if script.status == "draft":
-            script.status = "reviewed"
-        _advance_status(project, "SCRIPT_REVIEWED")
     session.flush()
     session.commit()
 
@@ -291,20 +304,10 @@ async def run_production_pipeline(
         prepare_assets(session, video_project_id=project.id)
         session.commit()
 
-        audio_assets = await synthesize_audio(
-            session, video_project_id=project.id, provider=providers.tts
-        )
+        # target_duration_seconds(尺の妥当性判定に使う)の算出はsynthesize_audio本体で
+        # 行われる(呼び出し元ごとの重複実装を避けるため)。
+        await synthesize_audio(session, video_project_id=project.id, provider=providers.tts)
         session.commit()
-
-        if project.target_duration_seconds is None:
-            total_audio_seconds = sum(
-                float((a.meta or {}).get("duration_seconds", 0.0)) for a in audio_assets
-            )
-            project.target_duration_seconds = round(
-                total_audio_seconds + DEFAULT_ENDCARD_DURATION_SECONDS
-            )
-            session.flush()
-            session.commit()
 
         render_video(session, video_project_id=project.id)
         session.commit()

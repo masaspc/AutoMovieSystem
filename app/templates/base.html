@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="{{ url_for('static', path='admin.css') }}?v={{ asset_version | default('0') }}" />
   <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
   {% block head %}{% endblock %}
+  <script>
+    // 二重クリック・二重送信による重複POSTを防ぐため、送信時にsubmitボタンを無効化する。
+    // (ブラウザの標準バリデーションを通過した submit イベントでのみ発火する)
+    document.addEventListener('submit', function (event) {
+      var button = event.target.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = true;
+      }
+    }, true);
+  </script>
 </head>
 <body>
 {% from "_icons.html" import icon %}
