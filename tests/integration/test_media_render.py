@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -23,6 +24,15 @@ from app.services.media.pipeline import prepare_assets, render_video, synthesize
 from app.services.media.probe import probe_video
 
 pytestmark = pytest.mark.media
+
+
+class RecordingFakeTTSProvider(FakeTTSProvider):
+    def __init__(self) -> None:
+        self.voices: list[str] = []
+
+    async def synthesize(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.voices.append(kwargs["voice"])
+        return await super().synthesize(**kwargs)
 
 
 def _ffmpeg_available() -> bool:
@@ -182,3 +192,90 @@ def test_render_video_is_idempotent_and_skips_second_render(
 
     assert project_again.checksum == first_checksum
     assert project_again.output_path == first_output_path
+
+
+def test_dialogue_is_ignored_for_existing_generic_tts_flow(
+    db_session: Session, media_generated_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DIALOGUE_SCRIPT_ENABLED", "false")
+    monkeypatch.setenv("TTS_PROVIDER", "generic_command")
+    get_settings.cache_clear()
+
+    project = _make_video_project_with_script(db_session)
+    script = db_session.get(Script, project.script_id)
+    assert script is not None
+    body = dict(script.body)
+    sections = [dict(section) for section in body["sections"]]
+    sections[0]["dialogue"] = [{"speaker": "metan", "text": "使ってはいけないセリフ"}]
+    body["sections"] = sections
+    script.body = body
+    db_session.flush()
+
+    provider = RecordingFakeTTSProvider()
+    audio_assets = asyncio.run(
+        synthesize_audio(db_session, video_project_id=project.id, provider=provider)
+    )
+
+    assert len(audio_assets) == 2
+    assert provider.voices == ["default", "default"]
+    assert all((asset.meta or {}).get("speaker") == "zundamon" for asset in audio_assets)
+
+
+def test_dialogue_render_with_character_frames_produces_valid_mp4(
+    db_session: Session, media_generated_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if not _ffmpeg_available():
+        pytest.skip("ffmpeg/ffprobeが見つかりません")
+
+    assets_dir = tmp_path / "characters"
+    for character, color in {
+        "zundamon": (88, 180, 118, 255),
+        "metan": (180, 100, 178, 255),
+        "tsumugi": (210, 156, 78, 255),
+    }.items():
+        directory = assets_dir / character
+        directory.mkdir(parents=True)
+        Image.new("RGBA", (360, 720), color).save(directory / "normal.png")
+        Image.new("RGBA", (360, 720), (*color[:3], 220)).save(directory / "talk.png")
+
+    monkeypatch.setenv("CHARACTER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("CHARACTER_ASSETS_DIR", str(assets_dir))
+    monkeypatch.setenv("DIALOGUE_SCRIPT_ENABLED", "true")
+    monkeypatch.setenv("TTS_PROVIDER", "voicevox")
+    get_settings.cache_clear()
+
+    project = _make_video_project_with_script(db_session)
+    script = db_session.get(Script, project.script_id)
+    assert script is not None
+    body = dict(script.body)
+    sections = [dict(section) for section in body["sections"]]
+    sections[0]["dialogue"] = [
+        {"speaker": "zundamon", "text": "こんにちはなのだ。", "emotion": "happy"},
+        {"speaker": "metan", "text": "今日は解説します。", "emotion": "serious"},
+    ]
+    sections[1]["dialogue"] = [
+        {"speaker": "tsumugi", "text": "補足をお届けします。", "emotion": "neutral"},
+    ]
+    body["sections"] = sections
+    script.body = body
+    db_session.flush()
+
+    prepare_assets(db_session, video_project_id=project.id)
+    db_session.commit()
+    provider = RecordingFakeTTSProvider()
+    audio_assets = asyncio.run(
+        synthesize_audio(db_session, video_project_id=project.id, provider=provider)
+    )
+    db_session.commit()
+    assert len(audio_assets) == 3
+    assert provider.voices == ["zundamon", "metan", "tsumugi"]
+
+    rendered = render_video(db_session, video_project_id=project.id)
+    db_session.commit()
+
+    assert rendered.status == "VIDEO_RENDERED"
+    assert rendered.output_path is not None
+    probe_result = probe_video(Path(rendered.output_path))
+    assert probe_result.width == 1920
+    assert probe_result.height == 1080
+    assert probe_result.has_audio is True

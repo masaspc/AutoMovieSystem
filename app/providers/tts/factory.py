@@ -1,4 +1,4 @@
-"""TTSプロバイダーの選択(設定 `TTS_PROVIDER=fake|generic_command`: D-006)。"""
+"""TTSプロバイダーの選択(設定 `TTS_PROVIDER=fake|voicevox|generic_command`: D-006)。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from app.core.config import Settings, get_settings
 from app.providers.tts.base import TTSProvider
 from app.providers.tts.fake import FakeTTSProvider
 from app.providers.tts.generic_command import GenericCommandTTSProvider
+from app.providers.tts.voicevox import VoicevoxTTSProvider
 
 
 def get_tts_provider(settings: Settings | None = None) -> TTSProvider:
@@ -15,6 +16,8 @@ def get_tts_provider(settings: Settings | None = None) -> TTSProvider:
     settings = settings or get_settings()
     if settings.TTS_PROVIDER == "fake":
         return FakeTTSProvider()
+    if settings.TTS_PROVIDER == "voicevox":
+        return VoicevoxTTSProvider(settings)
     if settings.TTS_PROVIDER == "generic_command":
         if not settings.TTS_GENERIC_COMMAND_TEMPLATE:
             raise ValueError(

@@ -4,13 +4,14 @@ import asyncio
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.channel import Channel
 from app.models.evidence import Evidence
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.usage_record import UsageRecord
 from app.providers.llm.fake import DeterministicFakeLLMProvider
-from app.services.scripts.generator import generate_script
+from app.services.scripts.generator import _build_prompts, generate_script
 
 
 def _make_topic(db_session: Session) -> Topic:
@@ -71,3 +72,17 @@ def test_generate_script_is_idempotent(db_session: Session) -> None:
     assert script1.id == script2.id
     assert db_session.query(Script).filter(Script.topic_id == topic.id).count() == 1
     assert db_session.query(UsageRecord).count() == 1
+
+
+def test_dialogue_prompt_is_explicitly_opt_in(db_session: Session, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    topic = _make_topic(db_session)
+
+    monkeypatch.setenv("DIALOGUE_SCRIPT_ENABLED", "false")
+    get_settings.cache_clear()
+    normal_prompt, _ = _build_prompts(topic, [])
+    assert "dialogue" not in normal_prompt
+
+    monkeypatch.setenv("DIALOGUE_SCRIPT_ENABLED", "true")
+    get_settings.cache_clear()
+    dialogue_prompt, _ = _build_prompts(topic, [])
+    assert "zundamonとmetan" in dialogue_prompt

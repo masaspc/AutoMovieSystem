@@ -48,7 +48,16 @@
         {% for section in (script.body.get("sections") or []) %}
         <li style="margin-bottom: 10px;">
           <strong>{{ section.get("heading", "") }}</strong>
+          {% set section_dialogue = section.get("dialogue") or [] %}
+          {% if dialogue_script_enabled and section_dialogue %}
+          <p class="muted" style="margin: 4px 0 0;">場面メモ: {{ section.get("narration", "") }}</p>
+          <p class="muted" style="margin: 6px 0 0;">動画で使う掛け合い</p>
+          {% for line in section_dialogue %}
+          <p style="margin: 4px 0 0;"><strong>{{ line.get("speaker", "") }}</strong>: {{ line.get("text", "") }}</p>
+          {% endfor %}
+          {% else %}
           <p class="muted" style="margin: 4px 0 0;">{{ section.get("narration", "") }}</p>
+          {% endif %}
         </li>
         {% endfor %}
       </ol>

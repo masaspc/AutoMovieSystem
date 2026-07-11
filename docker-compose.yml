@@ -25,6 +25,19 @@ services:
       timeout: 5s
       retries: 10
 
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu22.04-0.25.1
+    profiles: ["voicevox"]
+    ports:
+      - "127.0.0.1:50021:50021"
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:50021/version', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
   app:
     build: .
     env_file:
@@ -33,15 +46,20 @@ services:
       APP_ENV: production
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/auto_movie_system
       REDIS_URL: redis://redis:6379/0
+      VOICEVOX_BASE_URL: http://voicevox:50021
     ports:
       - "8000:8000"
     volumes:
       - ./generated:/app/generated
+      - ./assets/characters:/app/assets/characters:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      voicevox:
+        condition: service_healthy
+        required: false
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -54,13 +72,18 @@ services:
       APP_ENV: production
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/auto_movie_system
       REDIS_URL: redis://redis:6379/0
+      VOICEVOX_BASE_URL: http://voicevox:50021
     volumes:
       - ./generated:/app/generated
+      - ./assets/characters:/app/assets/characters:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      voicevox:
+        condition: service_healthy
+        required: false
     command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
 
   beat:
@@ -71,13 +94,18 @@ services:
       APP_ENV: production
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/auto_movie_system
       REDIS_URL: redis://redis:6379/0
+      VOICEVOX_BASE_URL: http://voicevox:50021
     volumes:
       - ./generated:/app/generated
+      - ./assets/characters:/app/assets/characters:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      voicevox:
+        condition: service_healthy
+        required: false
     command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
 
 volumes:

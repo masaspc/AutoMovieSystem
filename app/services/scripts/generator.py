@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.evidence import Evidence
 from app.models.job_run import JobRun
@@ -17,7 +18,7 @@ from app.services.llm_gateway import call_llm
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v1"
+PROMPT_VERSION = "script_v2"
 OPERATION = "generate_script"
 # architecture.md モデルルーティングポリシー: 台本初稿 = mid。
 MODEL_POLICY = "mid"
@@ -32,11 +33,26 @@ def build_idempotency_key(topic_id: str, prompt_version: str = PROMPT_VERSION) -
 
 
 def _build_prompts(topic: Topic, evidence_list: list[Evidence]) -> tuple[str, str]:
+    settings = get_settings()
+    dialogue_instruction = ""
+    if settings.DIALOGUE_SCRIPT_ENABLED:
+        allowed_cast = _allowed_dialogue_cast()
+        tsumugi_instruction = (
+            "tsumugiは補足が有効な場面だけ登場させます。"
+            if "tsumugi" in allowed_cast
+            else "tsumugiはこの動画では使用しません。"
+        )
+        dialogue_instruction = (
+            "各sectionのdialogueには、zundamonとmetanの掛け合いを2〜5行作成してください。"
+            f"使用可能なspeakerは {', '.join(allowed_cast)} です。{tsumugi_instruction}"
+            "emotionはneutral/happy/serious/surprisedのみを使ってください。"
+        )
     system_prompt = (
         "あなたはYouTube動画の台本作家です。与えられた企画とリサーチ根拠(Evidence)をもとに、"
         "視聴者に価値を提供する構造化された台本を日本語で作成してください。"
         "narrationで数値(%・円・倍などの主張)を述べる場合は必ず対応するevidence_idsを付与してください。"
         "「絶対に儲かる」「必ず成功する」等の誇張・断定表現は使用しないでください。"
+        f"{dialogue_instruction}"
     )
     evidence_lines = "\n".join(
         f"- id={e.id} claim={e.claim} source={e.source_url}" for e in evidence_list
@@ -47,6 +63,16 @@ def _build_prompts(topic: Topic, evidence_list: list[Evidence]) -> tuple[str, st
         f"リサーチ根拠一覧:\n{evidence_lines or '(なし)'}\n"
     )
     return system_prompt, user_prompt
+
+
+def _allowed_dialogue_cast() -> list[str]:
+    configured_cast = {
+        name.strip() for name in get_settings().DIALOGUE_CAST.split(",") if name.strip()
+    }
+    allowed_cast = [name for name in ("zundamon", "metan", "tsumugi") if name in configured_cast]
+    if not {"zundamon", "metan"}.issubset(allowed_cast):
+        return ["zundamon", "metan"]
+    return allowed_cast
 
 
 async def generate_script(
@@ -83,6 +109,14 @@ async def generate_script(
             job_run_id=job_run.id,
         )
         content = ScriptContent.model_validate(result.data)
+        dialogue_enabled = get_settings().DIALOGUE_SCRIPT_ENABLED
+        allowed_cast = set(_allowed_dialogue_cast()) if dialogue_enabled else set()
+        for section in content.sections:
+            section.dialogue = (
+                [line for line in section.dialogue if line.speaker in allowed_cast]
+                if dialogue_enabled
+                else []
+            )
         source_manifest = {"evidence_ids": [e.id for e in evidence_list]}
 
         max_version = (

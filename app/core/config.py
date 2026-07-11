@@ -110,10 +110,25 @@ class Settings(BaseSettings):
     # 動画アップロードのresumable upload チャンクサイズ(バイト。256KiBの倍数)。
     YOUTUBE_UPLOAD_CHUNK_SIZE_BYTES: int = 4 * 1024 * 1024
 
+    # TTS_PROVIDER=voicevox 時のVOICEVOX Engine設定。speaker idの既定値はノーマル声。
+    VOICEVOX_BASE_URL: str = "http://127.0.0.1:50021"
+    VOICEVOX_TIMEOUT_SECONDS: float = 120.0
+    VOICEVOX_SPEAKER_ZUNDAMON: int = 3
+    VOICEVOX_SPEAKER_METAN: int = 2
+    VOICEVOX_SPEAKER_TSUMUGI: int = 8
+
     # TTS_PROVIDER=generic_command 時のコマンドテンプレート(引数配列。JSON文字列で指定)。
     # 例: '["voicevox_cli", "--text", "{text}", "--voice", "{voice}", "--out", "{output}"]'
     TTS_GENERIC_COMMAND_TEMPLATE: str = ""
     TTS_GENERIC_COMMAND_TIMEOUT_SECONDS: float = 60.0
+
+    # 掛け合い台本・話者別VOICEVOXを明示的に使う場合だけtrueにする。既定は既存TTS互換を優先。
+    DIALOGUE_SCRIPT_ENABLED: bool = False
+    # 立ち絵解説動画。利用許諾を確認した公式素材を CHARACTER_ASSETS_DIR に配置して有効化する。
+    CHARACTER_RENDER_ENABLED: bool = False
+    CHARACTER_ASSETS_DIR: str = "assets/characters"
+    # 掛け合い台本で使用を許可する話者。つむぎを外せば2人掛け合いだけで量産できる。
+    DIALOGUE_CAST: str = "zundamon,metan,tsumugi"
 
     # Anthropic LLMプロバイダー設定。APIキー未設定でもFakeで全機能デモ可能(D-006)。
     ANTHROPIC_API_KEY: str = ""

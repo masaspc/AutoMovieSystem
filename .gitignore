@@ -20,6 +20,8 @@ token*.json
 
 # Generated media
 generated/
+assets/characters/*/
+!assets/characters/README.md
 sample_output/
 
 # OS / IDE

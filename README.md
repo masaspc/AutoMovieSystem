@@ -36,10 +36,12 @@ cd AutoMovieSystem
 ### 2. Python 環境セットアップ
 
 ```powershell
+Copy-Item .env.example .env
 ./scripts/dev.ps1 setup
 ```
 
-`uv sync` で依存関係をインストール。`.env` がなければ `.env.example` をコピーし、必要に応じて編集。
+`setup` は `uv sync` を実行して依存関係をインストールする。`.env` の作成は行わないため、
+必ず先に `.env.example` をコピーして必要に応じて編集する。
 
 ### 3. データベース初期化
 
@@ -58,7 +60,14 @@ cd AutoMovieSystem
 ```
 
 引数なし。SQLite + eager Celery + 全Fakeプロバイダーで企画→スコア→台本→動画生成→レビュー→承認→アップロード→指標同期→Insight生成を**一気に完走**。
-結果サマリーを表示。
+安全のため、既定では `.env` の `DATABASE_URL` を使わず `demo.db` に実行結果を作る。結果を
+通常の管理画面用DBに残して確認したい場合だけ、次のように明示する。
+
+```powershell
+$env:DEMO_USE_CURRENT_DB="1"
+./scripts/dev.ps1 demo
+Remove-Item Env:DEMO_USE_CURRENT_DB
+```
 
 ### 5. 管理画面起動
 
@@ -95,10 +104,23 @@ Jinja2+HTMX による管理画面で企画・台本・レビュー・公開状�
 
 ## Docker Compose で起動 (本番型)
 
+### すでにCompose環境が起動している場合
+
+次をブラウザで開く。
+
+```
+http://localhost:8000/dashboard
+```
+
+Compose は `APP_ENV=production` で起動するため、`.env` の `ADMIN_USERNAME` と
+`ADMIN_PASSWORD` によるHTTP Basic認証が必要。ヘルスチェックは
+`http://localhost:8000/health` で確認できる。
+
 ### 前提条件
 
 - Docker Desktop インストール・起動済み
 - `.env` ファイルが存在し、`CELERY_TASK_ALWAYS_EAGER=false` に設定
+- `.env` に `ADMIN_USERNAME`、強力な `ADMIN_PASSWORD`、`SECRET_ENCRYPTION_KEY` を設定
 
 ### 起動
 
@@ -111,6 +133,7 @@ Jinja2+HTMX による管理画面で企画・台本・レビュー・公開状�
 ./scripts/dev.ps1 seed
 
 # ブラウザで http://localhost:8000/dashboard にアクセス
+# .env の ADMIN_USERNAME / ADMIN_PASSWORD でBasic認証
 ```
 
 worker/beat はコンテナ内で自動起動。
@@ -235,6 +258,7 @@ sample_data/
 | **[docs/content-policy.md](docs/content-policy.md)** | コンテンツポリシー・自動公開条件 |
 | **[docs/cost-control.md](docs/cost-control.md)** | AI予算・UsageRecord・料金表 |
 | **[docs/local-llm.md](docs/local-llm.md)** | ローカルLLM(Ollama等)構成・ポリシー別ルーティング |
+| **[docs/character-video.md](docs/character-video.md)** | VOICEVOX+立ち絵掛け合い動画の設定・素材配置 |
 | **[docs/youtube-oauth.md](docs/youtube-oauth.md)** | YouTube OAuth 取得手順 |
 | **[DECISIONS.md](DECISIONS.md)** | 採用決定事項(D-001〜D-020) |
 | **[TASKS.md](TASKS.md)** | Phase 進行状況 |

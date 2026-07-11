@@ -33,6 +33,8 @@ from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.youtube.base import UploadRequest, YouTubeProvider
 from app.services.jobs import JobInProgressError, run_idempotent_async
+from app.services.media.characters import character_credits
+from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
 from app.services.media.renderer import compute_file_checksum
 from app.services.state_machine import transition
 
@@ -61,6 +63,21 @@ def build_upload_idempotency_key(video_project_id: str, checksum: str) -> str:
 def build_idempotency_marker(idempotency_key: str) -> str:
     """description末尾に埋め込む不可視マーカー(ADR-0005)。"""
     return f"amx-idem:{idempotency_key}"
+
+
+def _with_voicevox_credits(description: str, body: dict) -> str:
+    """掛け合い台本の話者クレジットを概要欄へ重複なく追記する。"""
+    settings = get_settings()
+    if settings.TTS_PROVIDER != "voicevox" or not dialogue_script_enabled(settings):
+        return description
+    credits = character_credits(extract_speech_lines(body, settings=settings))
+    if not credits:
+        return description
+    missing = [credit for credit in credits if credit not in description]
+    if not missing:
+        return description
+    separator = "\n\n" if description.strip() else ""
+    return f"{description.rstrip()}{separator}" + "\n".join(missing)
 
 
 def _get_video_project(session: Session, video_project_id: str) -> VideoProject:
@@ -246,7 +263,7 @@ async def upload_video(
 
     body = script.body or {}
     title = script.title
-    description = str(body.get("description") or "")
+    description = _with_voicevox_credits(str(body.get("description") or ""), body)
     tags = list(body.get("tags") or [])
     privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
 
@@ -336,7 +353,7 @@ def record_publication_failure_in_new_session(
         script = new_session.get(Script, project.script_id) if project.script_id else None
         body = script.body if script is not None and script.body else {}
         title = script.title if script is not None else f"VideoProject {video_project_id}"
-        description = str(body.get("description") or "")
+        description = _with_voicevox_credits(str(body.get("description") or ""), body)
         tags = list(body.get("tags") or [])
         privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
 
