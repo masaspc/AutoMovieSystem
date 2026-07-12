@@ -113,6 +113,10 @@ def test_topic_ui_saves_production_settings(client: TestClient, db_session: Sess
             "script_template": "comparison",
             "tone": "明るく簡潔",
             "dialogue_ratio": "0.4",
+            "bgm_mood": "upbeat",
+            "bgm_volume_db": "-22",
+            "se_enabled": "true",
+            "se_volume_db": "-12",
             "target_character_count": "",
             "intent": "save",
         },
@@ -123,6 +127,9 @@ def test_topic_ui_saves_production_settings(client: TestClient, db_session: Sess
     assert project.production_settings["target_duration_seconds"] == 180
     assert project.production_settings["script_template"] == "comparison"
     assert project.production_settings["speaking_rate"] == 1.25
+    assert project.production_settings["bgm_mood"] == "upbeat"
+    assert project.production_settings["bgm_volume_db"] == -22.0
+    assert project.production_settings["se_enabled"] is True
 
 
 def test_video_project_ui_edits_and_reorders_sections(

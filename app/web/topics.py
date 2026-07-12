@@ -211,6 +211,10 @@ def _production_settings_from_form(
     script_template: str,
     tone: str,
     dialogue_ratio: float,
+    bgm_mood: str = "calm",
+    bgm_volume_db: float = -19.0,
+    se_enabled: bool = True,
+    se_volume_db: float = -10.0,
 ) -> ProductionSettings:
     if preset == "custom":
         values: dict[str, object] = {
@@ -230,6 +234,10 @@ def _production_settings_from_form(
             "script_template": script_template,
             "tone": tone,
             "dialogue_ratio": dialogue_ratio,
+            "bgm_mood": bgm_mood,
+            "bgm_volume_db": bgm_volume_db,
+            "se_enabled": se_enabled,
+            "se_volume_db": se_volume_db,
         }
     )
     return ProductionSettings.model_validate(values)
@@ -253,6 +261,10 @@ def save_production_settings(
     dialogue_ratio: Annotated[float, Form()],
     intent: Annotated[str, Form()] = "save",
     target_character_count: Annotated[int | None, Form()] = None,
+    bgm_mood: Annotated[str, Form()] = "calm",
+    bgm_volume_db: Annotated[float, Form()] = -19.0,
+    se_enabled: Annotated[bool, Form()] = False,
+    se_volume_db: Annotated[float, Form()] = -10.0,
 ) -> RedirectResponse:
     require_csrf(request, csrf_token)
     topic = db.get(Topic, topic_id)
@@ -271,6 +283,10 @@ def save_production_settings(
             script_template=script_template,
             tone=tone,
             dialogue_ratio=dialogue_ratio,
+            bgm_mood=bgm_mood,
+            bgm_volume_db=bgm_volume_db,
+            se_enabled=se_enabled,
+            se_volume_db=se_volume_db,
         )
     except (ValidationError, ValueError) as exc:
         return RedirectResponse(

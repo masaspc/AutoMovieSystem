@@ -88,6 +88,19 @@
       <div class="field"><label for="target_character_count">目標文字数（空欄=自動）</label><input id="target_character_count" name="target_character_count" type="number" min="1" max="100000" value="{{ production_settings.target_character_count or '' }}" /></div>
       <div class="field"><label for="dialogue_ratio">掛け合い比率</label><input id="dialogue_ratio" name="dialogue_ratio" type="number" min="0" max="1" step="0.1" value="{{ production_settings.dialogue_ratio }}" required /></div>
     </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="bgm_mood">BGMの雰囲気</label>
+        <select id="bgm_mood" name="bgm_mood">
+          {% for value, label in [('none', 'なし'), ('calm', '落ち着き'), ('upbeat', '明るい'), ('serious', '真剣')] %}
+          <option value="{{ value }}"{{ ' selected' if production_settings.bgm_mood == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><label for="bgm_volume_db">BGM音量（dB）</label><input id="bgm_volume_db" name="bgm_volume_db" type="number" min="-40" max="0" step="1" value="{{ production_settings.bgm_volume_db }}" required /></div>
+      <div class="field"><label for="se_volume_db">効果音量（dB）</label><input id="se_volume_db" name="se_volume_db" type="number" min="-40" max="0" step="1" value="{{ production_settings.se_volume_db }}" required /></div>
+      <div class="field"><label><input name="se_enabled" type="checkbox" value="true"{{ ' checked' if production_settings.se_enabled else '' }} /> セクション切替SE</label></div>
+    </div>
     <p class="muted">推定目標文字数: 約{{ production_settings.resolved_target_character_count() }}文字 ／ 保存済み希望尺: {{ production_settings.target_duration_seconds }}秒</p>
     <div class="actions">
       <button type="submit" name="intent" value="save" class="btn-secondary">設定を保存</button>
