@@ -214,3 +214,34 @@ def test_optional_pose_asset_is_preferred_and_missing_pose_falls_back(tmp_path: 
         _portrait_path(settings, "zundamon", "neutral", talking=False, pose="pointing") == pointing
     )
     assert _portrait_path(settings, "zundamon", "neutral", talking=False, pose="thinking") == normal
+
+
+def test_section_change_adds_crossfade_without_changing_total_duration(tmp_path: Path) -> None:
+    assets_dir = tmp_path / "characters"
+    _write_portrait(assets_dir / "zundamon" / "normal.png", (80, 180, 120))
+    _write_portrait(assets_dir / "metan" / "normal.png", (180, 110, 180))
+    first_bg = tmp_path / "first.png"
+    second_bg = tmp_path / "second.png"
+    Image.new("RGB", (1920, 1080), (20, 30, 50)).save(first_bg)
+    Image.new("RGB", (1920, 1080), (80, 30, 20)).save(second_bg)
+    lines = extract_speech_lines(
+        {"sections": [{"narration": "最初"}, {"narration": "次"}]},
+        dialogue_enabled=False,
+    )
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        CHARACTER_RENDER_ENABLED=True,
+        CHARACTER_ASSETS_DIR=str(assets_dir),
+    )
+
+    frames = build_scene_frames(
+        backgrounds={0: first_bg, 1: second_bg},
+        lines=lines,
+        durations=[1.0, 1.0],
+        sections=[{"visual_type": "dialogue"}, {"visual_type": "dialogue"}],
+        settings=settings,
+        output_dir=tmp_path / "frames",
+    )
+
+    assert any("transition_001" in frame.path.name for frame in frames)
+    assert abs(sum(frame.duration_seconds for frame in frames) - 2.0) < 1e-6

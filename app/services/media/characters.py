@@ -49,6 +49,8 @@ _SIDES = {
 _SIDE_ORDER = {"left": 0, "center": 1, "right": 2}
 _EDGE_MARGIN = 60
 _BOTTOM_MARGIN = 60
+_TRANSITION_SECONDS = 0.24
+_TRANSITION_STEPS = 3
 
 
 def character_credits(lines: list[SpeechLine]) -> list[str]:
@@ -237,6 +239,24 @@ def _compose_frame(
     return output_path
 
 
+def _build_crossfade_frames(
+    *, source: Path, target: Path, output_dir: Path, section_index: int, duration: float
+) -> list[SceneFrame]:
+    """セクション境界を短くクロスフェードする。時間は後続セリフ尺の内数。"""
+    if duration <= 0:
+        return []
+    with Image.open(source) as source_image, Image.open(target) as target_image:
+        left = source_image.convert("RGB").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
+        right = target_image.convert("RGB").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
+        result: list[SceneFrame] = []
+        step_duration = duration / _TRANSITION_STEPS
+        for step in range(1, _TRANSITION_STEPS + 1):
+            path = output_dir / f"transition_{section_index:03d}_{step}.png"
+            Image.blend(left, right, step / (_TRANSITION_STEPS + 1)).save(path, "PNG")
+            result.append(SceneFrame(path=path, duration_seconds=step_duration))
+    return result
+
+
 def build_scene_frames(
     *,
     backgrounds: dict[int, Path] | None = None,
@@ -260,6 +280,8 @@ def build_scene_frames(
     sections = sections or []
 
     frames: list[SceneFrame] = []
+    previous_scene_path: Path | None = None
+    previous_section_index: int | None = None
     for line, duration in zip(lines, durations, strict=True):
         section = sections[line.section_index] if line.section_index < len(sections) else {}
         background_path = backgrounds.get(line.section_index) or next(iter(backgrounds.values()))
@@ -272,11 +294,31 @@ def build_scene_frames(
             output_path=output_dir / f"line_{line.index:03d}_closed.png",
             section=section,
         )
+        transition_duration = (
+            min(_TRANSITION_SECONDS, duration * 0.15)
+            if previous_scene_path is not None
+            and previous_section_index is not None
+            and previous_section_index != line.section_index
+            else 0.0
+        )
+        if previous_scene_path is not None and transition_duration > 0:
+            frames.extend(
+                _build_crossfade_frames(
+                    source=previous_scene_path,
+                    target=closed,
+                    output_dir=output_dir,
+                    section_index=line.section_index,
+                    duration=transition_duration,
+                )
+            )
+        content_duration = max(0.0, duration - transition_duration)
         pose = _pose_for_section(section, line.emotion)
         open_path = _portrait_path(settings, line.speaker, line.emotion, talking=True, pose=pose)
         closed_path = _portrait_path(settings, line.speaker, line.emotion, talking=False, pose=pose)
-        if open_path == closed_path or duration <= 0.3:
-            frames.append(SceneFrame(path=closed, duration_seconds=duration))
+        if open_path == closed_path or content_duration <= 0.3:
+            frames.append(SceneFrame(path=closed, duration_seconds=content_duration))
+            previous_scene_path = closed
+            previous_section_index = line.section_index
             continue
 
         opened = _compose_frame(
@@ -303,7 +345,7 @@ def build_scene_frames(
             if blink_source is not None
             else None
         )
-        remaining = duration
+        remaining = content_duration
         mouth_open = False
         phase = 0
         while remaining > 0:
@@ -322,4 +364,6 @@ def build_scene_frames(
             mouth_open = not mouth_open
             phase += 1
             remaining -= clip_duration
+        previous_scene_path = closed
+        previous_section_index = line.section_index
     return frames
