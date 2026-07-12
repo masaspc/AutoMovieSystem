@@ -184,6 +184,27 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
                 },
             )
 
+        # シリーズ統一サムネイル自動生成(モジュール分割による循環importを避けるため
+        # 遅延import)。候補3案を生成し、role="thumbnail"(選択済み)が未設定なら
+        # 候補0を自動でデフォルト選択する(冪等: 既に選択済みなら上書きしない)。
+        from app.services.media import thumbnails
+
+        thumbnail_assets = thumbnails.generate_thumbnail_candidates(
+            session, video_project_id=video_project_id
+        )
+        existing_selected = (
+            session.query(Asset)
+            .filter(
+                Asset.video_project_id == video_project_id,
+                Asset.role == thumbnails.THUMBNAIL_ROLE_SELECTED,
+            )
+            .one_or_none()
+        )
+        if existing_selected is None and thumbnail_assets:
+            thumbnails.select_thumbnail(
+                session, video_project_id=video_project_id, candidate_index=0
+            )
+
         transition(project, "ASSETS_READY")
         session.flush()
         return project

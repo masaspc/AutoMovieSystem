@@ -277,13 +277,20 @@ def _build_scene_video_track(
 
     concat_list = output.parent / "scene_frames.ffconcat"
     concat_lines = ["ffconcat version 1.0"]
+    last_escaped_path = ""
     for frame in valid_frames:
         normalized_path = str(frame.path.resolve()).replace("\\", "/")
         escaped_path = normalized_path.replace("'", r"'\''")
         concat_lines.append(f"file '{escaped_path}'")
         concat_lines.append(f"duration {frame.duration_seconds:.6f}")
+        last_escaped_path = escaped_path
+    # concat demuxerの最終エントリのduration解釈はFFmpegバージョンで異なる
+    # (無視される/直前durationを継承する等)。末尾にファイルをもう一度記載して
+    # 「合計尺以上」を保証したうえで、-t で正確な合計尺へクランプする。
+    concat_lines.append(f"file '{last_escaped_path}'")
     concat_list.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
 
+    total_duration = sum(frame.duration_seconds for frame in valid_frames)
     args = [
         "-y",
         "-f",
@@ -294,6 +301,8 @@ def _build_scene_video_track(
         str(concat_list),
         "-vf",
         f"fps={VIDEO_FPS},format=yuv420p",
+        "-t",
+        f"{total_duration:.3f}",
         "-pix_fmt",
         "yuv420p",
         "-c:v",

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.timeutil import utcnow_naive
 from app.models.approval import Approval
+from app.models.asset import Asset
 from app.models.channel import Channel
 from app.models.job_run import JobRun
 from app.models.publication import Publication
@@ -337,3 +338,66 @@ def test_restart_upload_recovers_from_failed_state(db_session: Session, tmp_path
     restored = uploader.restart_upload(db_session, video_project_id=project.id)
     db_session.commit()
     assert restored.status == "UPLOAD_READY"
+
+
+def test_successful_upload_sets_thumbnail_when_asset_exists(
+    db_session: Session, tmp_path: Path
+) -> None:
+    """role="thumbnail" のAssetがあれば、アップロード成功後にYouTubeへ設定される。"""
+    project = _make_ready_project(db_session, tmp_path)
+    thumbnail_path = tmp_path / "thumb.png"
+    thumbnail_path.write_bytes(b"png-bytes")
+    db_session.add(
+        Asset(
+            video_project_id=project.id,
+            asset_type="image",
+            role="thumbnail",
+            file_path=str(thumbnail_path),
+            checksum="thumb-checksum",
+            meta={},
+        )
+    )
+    db_session.flush()
+    provider = FakeYouTubeProvider()
+
+    publication = asyncio.run(
+        uploader.upload_video(db_session, video_project_id=project.id, provider=provider)
+    )
+    db_session.commit()
+
+    assert provider.thumbnails[publication.youtube_video_id] == str(thumbnail_path)
+
+
+def test_set_thumbnail_exception_does_not_fail_upload(
+    db_session: Session, tmp_path: Path
+) -> None:
+    """set_thumbnail が例外を送出してもアップロード自体は成功として扱う。"""
+    project = _make_ready_project(db_session, tmp_path)
+    thumbnail_path = tmp_path / "thumb.png"
+    thumbnail_path.write_bytes(b"png-bytes")
+    db_session.add(
+        Asset(
+            video_project_id=project.id,
+            asset_type="image",
+            role="thumbnail",
+            file_path=str(thumbnail_path),
+            checksum="thumb-checksum",
+            meta={},
+        )
+    )
+    db_session.flush()
+    provider = FakeYouTubeProvider()
+
+    async def _raise(*, youtube_video_id: str, image_path: Path) -> None:
+        raise RuntimeError("thumbnail upload failed (test)")
+
+    provider.set_thumbnail = _raise  # type: ignore[method-assign]
+
+    publication = asyncio.run(
+        uploader.upload_video(db_session, video_project_id=project.id, provider=provider)
+    )
+    db_session.commit()
+
+    assert publication.upload_status == "completed"
+    refreshed = db_session.get(VideoProject, project.id)
+    assert refreshed.status == "UPLOADED_PRIVATE"

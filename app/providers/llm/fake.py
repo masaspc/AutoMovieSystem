@@ -160,6 +160,11 @@ def _generate_script_content(
         "description": f"本動画では{suffix}に関するテーマを解説します。",
         "tags": ["解説", "初心者向け"],
         "chapters": ["導入", "本編", "まとめ"],
+        "thumbnail_texts": [
+            "えっ、5分で!?",
+            "初心者の9割が誤解",
+            f"完全解説{suffix[:2]}",
+        ],
     }
 
 

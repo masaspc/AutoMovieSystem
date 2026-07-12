@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 PRIVACY_STATUSES = ("private", "unlisted", "public")
@@ -105,6 +106,8 @@ class YouTubeProvider(Protocol):
     """
 
     async def upload_video(self, *, request: UploadRequest) -> UploadResult: ...
+
+    async def set_thumbnail(self, *, youtube_video_id: str, image_path: Path) -> None: ...
 
     async def list_recent_uploads(self, *, max_results: int) -> list[UploadedVideoInfo]: ...
 

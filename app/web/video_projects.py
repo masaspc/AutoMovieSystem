@@ -29,6 +29,7 @@ from app.models.video_metric_daily import VideoMetricDaily
 from app.models.video_project import VideoProject
 from app.schemas.production_settings import ProductionSettings
 from app.schemas.script_content import ScriptContent
+from app.services.media import thumbnails
 from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
 from app.services.scripts.duration import estimate_duration_seconds
 from app.services.scripts.editor import ScriptEditError, save_edited_script
@@ -135,6 +136,13 @@ def video_project_detail(
     )
 
     assets = db.query(Asset).filter(Asset.video_project_id == project.id).all()
+    thumbnail_candidates = sorted(
+        (a for a in assets if a.role.startswith(thumbnails.THUMBNAIL_ROLE_PREFIX)),
+        key=lambda a: a.role,
+    )
+    selected_thumbnail = next(
+        (a for a in assets if a.role == thumbnails.THUMBNAIL_ROLE_SELECTED), None
+    )
     reviews = _latest_reviews(db, project.id)
     blocking_findings = [f for r in reviews for f in (r.blocking_findings or [])]
 
@@ -211,6 +219,8 @@ def video_project_detail(
             "script": script,
             "evidence_list": evidence_list,
             "assets": assets,
+            "thumbnail_candidates": thumbnail_candidates,
+            "selected_thumbnail": selected_thumbnail,
             "reviews": reviews,
             "blocking_findings": blocking_findings,
             "approval": approval,
@@ -486,6 +496,54 @@ def pipeline_upload(
         "pipeline_upload_dispatched", video_project_id=video_project_id, operator=operator
     )
     return _dispatch_task(video_project_id, task.id, "アップロード")
+
+
+_THUMBNAIL_FILENAMES = {
+    f"candidate_{i}.png" for i in range(thumbnails.THUMBNAIL_CANDIDATE_COUNT)
+} | {"selected.png"}
+
+
+@router.post("/video-projects/{video_project_id}/thumbnail/select")
+def select_thumbnail_route(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+    candidate_index: Annotated[int, Form(ge=0, le=thumbnails.THUMBNAIL_CANDIDATE_COUNT - 1)],
+) -> RedirectResponse:
+    require_csrf(request, csrf_token)
+    _require_video_project(video_project_id, db)
+    try:
+        thumbnails.select_thumbnail(
+            db, video_project_id=video_project_id, candidate_index=candidate_index
+        )
+    except thumbnails.ThumbnailNotFoundError as exc:
+        db.rollback()
+        return _redirect_back(video_project_id, error=str(exc))
+    db.commit()
+    return _redirect_back(video_project_id, info="サムネイルを選択しました")
+
+
+@router.get("/media/{video_project_id}/thumbnails/{filename}")
+def serve_thumbnail(video_project_id: str, filename: str, db: DbSession) -> FileResponse:
+    """`generated/videos/{id}/thumbnails/` 配下のPNGをホワイトリスト付きで配信する。"""
+    project = db.get(VideoProject, video_project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="video project not found")
+    if filename not in _THUMBNAIL_FILENAMES:
+        raise HTTPException(status_code=404, detail="thumbnail not found")
+
+    try:
+        resolved = resolve_generated_path(
+            thumbnails.thumbnail_relative_path(video_project_id, filename)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="thumbnail file not found")
+
+    return FileResponse(str(resolved), media_type="image/png")
 
 
 @router.get("/media/{video_project_id}")

@@ -22,11 +22,16 @@ def test_scene_track_uses_one_concat_input_for_many_frames(tmp_path: Path, monke
     assert "-f" in captured["args"]
     concat_list = tmp_path / "scene_frames.ffconcat"
     assert concat_list.exists()
+    # 1000フレーム + 末尾のファイル再掲1行(concat demuxerの最終duration解釈の
+    # バージョン差対策。合計尺は -t でクランプされる)= 1001行。
     assert (
         sum(
             1
             for line in concat_list.read_text(encoding="utf-8").splitlines()
             if line.startswith("file ")
         )
-        == 1_000
+        == 1_001
     )
+    # 合計尺(0.18秒×1000)への -t クランプが指定されている。
+    t_index = captured["args"].index("-t")
+    assert captured["args"][t_index + 1] == "180.000"

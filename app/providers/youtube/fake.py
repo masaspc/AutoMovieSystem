@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from app.core.timeutil import utcnow_naive
 from app.providers.youtube.base import (
@@ -49,6 +50,8 @@ class FakeYouTubeProviderStore:
         self.statistics: dict[str, VideoStatistics] = {}
         self.comments: dict[str, list[CommentData]] = {}
         self.retention: dict[str, list[AudienceRetentionPoint]] = {}
+        # `set_thumbnail` の呼び出し記録(youtube_video_id -> image_path文字列)。
+        self.thumbnails: dict[str, str] = {}
         self.auth_ok: bool = True
         self._upload_counter: int = 0
 
@@ -57,6 +60,7 @@ class FakeYouTubeProviderStore:
         self.statistics.clear()
         self.comments.clear()
         self.retention.clear()
+        self.thumbnails.clear()
         self.auth_ok = True
         self._upload_counter = 0
 
@@ -96,6 +100,16 @@ class FakeYouTubeProvider:
         return UploadResult(
             youtube_video_id=youtube_video_id, privacy_status=request.privacy_status
         )
+
+    async def set_thumbnail(self, *, youtube_video_id: str, image_path: Path) -> None:
+        if youtube_video_id not in self.store.videos:
+            raise ValueError(f"video not found: {youtube_video_id}")
+        self.store.thumbnails[youtube_video_id] = str(image_path)
+
+    @property
+    def thumbnails(self) -> dict[str, str]:
+        """呼び出し記録の参照用ショートカット(仕様上の `self.thumbnails`)。"""
+        return self.store.thumbnails
 
     async def list_recent_uploads(self, *, max_results: int) -> list[UploadedVideoInfo]:
         videos = sorted(self.store.videos.values(), key=lambda v: v.created_at, reverse=True)

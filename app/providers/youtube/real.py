@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from google.auth.exceptions import RefreshError
@@ -214,6 +215,30 @@ class RealYouTubeProvider:
 
     async def upload_video(self, *, request: UploadRequest) -> UploadResult:
         return await asyncio.to_thread(self._upload_video_sync, request)
+
+    # --- set_thumbnail -------------------------------------------------------
+
+    def _set_thumbnail_sync(self, youtube_video_id: str, image_path: Path) -> None:
+        youtube = self._build_client()
+        media = MediaFileUpload(str(image_path), mimetype="image/png")
+
+        def _set() -> Any:
+            return youtube.thumbnails().set(videoId=youtube_video_id, media_body=media).execute()
+
+        try:
+            _run_with_retry(_set)
+        except AuthError as exc:
+            # 403(カスタムサムネイルにはチャンネルの電話番号確認が必要、等)は
+            # アップロード全体を失敗させない。動画自体の公開ゲートとは無関係のため
+            # warningに留めて継続する。
+            logger.warning(
+                "youtube_set_thumbnail_forbidden",
+                youtube_video_id=youtube_video_id,
+                error=str(exc),
+            )
+
+    async def set_thumbnail(self, *, youtube_video_id: str, image_path: Path) -> None:
+        await asyncio.to_thread(self._set_thumbnail_sync, youtube_video_id, image_path)
 
     # --- list_recent_uploads ------------------------------------------------
 

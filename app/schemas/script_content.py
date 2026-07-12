@@ -53,3 +53,7 @@ class ScriptContent(BaseModel):
     description: str
     tags: list[str]
     chapters: list[str]
+    # サムネイル用パンチライン3案(各6〜12文字程度。疑問形・数字・断定のいずれかの型)。
+    # 後方互換: 旧バージョンで生成・保存されたbodyには存在しないため既定は空リスト。
+    # 空の場合はサムネイル生成側で title_candidates[0] の先頭12文字にフォールバックする。
+    thumbnail_texts: list[str] = Field(default_factory=list, max_length=3)

@@ -21,7 +21,7 @@ from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v4_visual_direction"
+PROMPT_VERSION = "script_v5_thumbnail_texts"
 OPERATION = "generate_script"
 REPAIR_PROMPT_VERSION = "script_repair_v1"
 REPAIR_OPERATION = "repair_script_duration"
@@ -149,6 +149,10 @@ def _build_prompts(
         "重要事項はkey_pointとvisual_bullets、確認問題はquiz_question/quiz_options/quiz_answerを設定してください。"
         "character_layoutは教材が主役のcode/diagramではsmall_leftまたはsmall_right、quizではhiddenを優先し、"
         "背景や動きは説明に必要なものだけを指定してください。"
+        "さらに、サムネイル用のパンチラインを3案 thumbnail_texts に出力してください。"
+        "各パンチラインは6〜12文字程度で、疑問形・数字・断定のいずれかの型にしてください"
+        "(例:「えっ、5分で?」「初心者の9割が誤解」)。誇張・断定表現の禁止方針は"
+        "thumbnail_textsにも適用してください。"
     )
     evidence_lines = "\n".join(
         f"- id={e.id} claim={e.claim} source={e.source_url}" for e in evidence_list

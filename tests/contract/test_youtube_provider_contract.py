@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -77,3 +78,45 @@ def test_fake_check_auth_returns_bool() -> None:
     provider = FakeYouTubeProvider()
     result = asyncio.run(provider.check_auth())
     assert isinstance(result, bool)
+
+
+@pytest.mark.contract
+def test_fake_set_thumbnail_records_call() -> None:
+    fake_provider = FakeYouTubeProvider()
+    upload_result = asyncio.run(fake_provider.upload_video(request=_request()))
+    image_path = Path(__file__)
+
+    asyncio.run(
+        fake_provider.set_thumbnail(
+            youtube_video_id=upload_result.youtube_video_id, image_path=image_path
+        )
+    )
+
+    assert fake_provider.thumbnails[upload_result.youtube_video_id] == str(image_path)
+
+
+@pytest.mark.contract
+def test_real_set_thumbnail_forbidden_error_is_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from googleapiclient.errors import HttpError
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    real_provider = RealYouTubeProvider(settings)
+    monkeypatch.setattr(real_provider, "_build_credentials", lambda: MagicMock())
+
+    response = MagicMock()
+    response.status = 403
+    response.get.return_value = None
+
+    mock_set_request = MagicMock()
+    mock_set_request.execute.side_effect = HttpError(response, b'{"error": {"errors": []}}')
+    mock_youtube = MagicMock()
+    mock_youtube.thumbnails.return_value.set.return_value = mock_set_request
+
+    import app.providers.youtube.real as real_module
+
+    monkeypatch.setattr(real_module, "build", lambda *a, **kw: mock_youtube)
+
+    # 403は例外にせず継続する(アップロード全体を失敗させない)。
+    asyncio.run(
+        real_provider.set_thumbnail(youtube_video_id="yt-1", image_path=Path(__file__))
+    )

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.logging import get_logger, mask_secrets_in_text
 from app.models.approval import Approval
+from app.models.asset import Asset
 from app.models.job_run import JobRun
 from app.models.publication import Publication
 from app.models.review import Review
@@ -195,6 +196,34 @@ async def _reconcile_existing_upload(
     return None
 
 
+async def _apply_thumbnail_if_available(
+    session: Session, project: VideoProject, provider: YouTubeProvider, youtube_video_id: str
+) -> None:
+    """role="thumbnail"(選択済みサムネイル)があればYouTubeへ設定する。
+
+    サムネイル設定はアップロード本体の成否・公開ゲートとは無関係なため、失敗しても
+    アップロード自体は成功として扱う(warningに留めて継続)。
+    """
+    thumbnail_asset = (
+        session.query(Asset)
+        .filter(Asset.video_project_id == project.id, Asset.role == "thumbnail")
+        .one_or_none()
+    )
+    if thumbnail_asset is None:
+        return
+    try:
+        await provider.set_thumbnail(
+            youtube_video_id=youtube_video_id, image_path=Path(thumbnail_asset.file_path)
+        )
+    except Exception as exc:  # noqa: BLE001 - サムネイル設定失敗でアップロード全体を失敗させない
+        logger.warning(
+            "upload_set_thumbnail_failed",
+            video_project_id=project.id,
+            youtube_video_id=youtube_video_id,
+            error=mask_secrets_in_text(str(exc)),
+        )
+
+
 async def _upload_or_reconcile(
     session: Session,
     project: VideoProject,
@@ -220,6 +249,7 @@ async def _upload_or_reconcile(
             publication.last_error = None
             transition(project, "UPLOADED_PRIVATE")
             session.flush()
+            await _apply_thumbnail_if_available(session, project, provider, reconciled_id)
             return publication
 
     assert project.output_path is not None
@@ -240,6 +270,7 @@ async def _upload_or_reconcile(
     publication.last_error = None
     transition(project, "UPLOADED_PRIVATE")
     session.flush()
+    await _apply_thumbnail_if_available(session, project, provider, result.youtube_video_id)
     return publication
 
 

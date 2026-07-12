@@ -128,6 +128,33 @@
     </div>
 
     <div class="card">
+      <h3 class="card-title">サムネイル</h3>
+      {% if thumbnail_candidates %}
+      <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+        {% for asset in thumbnail_candidates %}
+        {% set idx = loop.index0 %}
+        {% set is_selected = selected_thumbnail and selected_thumbnail.meta.get('candidate_index') == idx %}
+        <div style="text-align: center;">
+          <img
+            src="/media/{{ project.id }}/thumbnails/candidate_{{ idx }}.png"
+            alt="サムネイル候補{{ idx }}"
+            style="width: 240px; border: 3px solid {{ '#2b8a3e' if is_selected else '#ccc' }}; border-radius: 6px;"
+          />
+          <p class="muted" style="margin: 4px 0;">{{ asset.meta.get('text', '') }}</p>
+          <form method="post" action="/video-projects/{{ project.id }}/thumbnail/select">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <input type="hidden" name="candidate_index" value="{{ idx }}" />
+            <button type="submit" class="btn-sm"{{ ' disabled' if is_selected else '' }}>{{ "選択中" if is_selected else "これにする" }}</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">素材準備の実行で生成されます</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
       <h3 class="card-title">素材(Asset)</h3>
       <div class="table-wrap">
         <table>

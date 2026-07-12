@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utcnow_naive
@@ -35,6 +35,10 @@ class SeriesPlan(Base):
     planned_episode_count: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     curriculum_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    # サムネイル自動生成の統一ビジュアルアイデンティティ(`app.services.media.branding.
+    # SeriesBranding` をdict化したもの)。未設定ならシリーズ名から決定的に導出する
+    # (`resolve_branding`)。SQLite互換のため `sqlalchemy.JSON` を使う。
+    branding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
