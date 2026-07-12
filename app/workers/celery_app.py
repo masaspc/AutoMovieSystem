@@ -25,6 +25,7 @@ celery_app = Celery(
 
 celery_app.conf.update(
     task_acks_late=True,
+    task_track_started=True,
     task_always_eager=settings.CELERY_TASK_ALWAYS_EAGER,
     task_eager_propagates=settings.CELERY_TASK_ALWAYS_EAGER,
     timezone="UTC",

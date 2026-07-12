@@ -71,6 +71,11 @@
 - [x] シリーズ講座MVP: SeriesPlan/EpisodePlan、全体カリキュラムLLM生成、Episode編集・
       並べ替え・承認、EpisodeからTopic/VideoProject/台本生成、過去回・新規概念・
       未説明概念を台本プロンプトへ自動注入、制作開始後のカリキュラム固定
+- [x] 学習動画ビジュアル改善: 字幕セーフエリア、セクション別visual_type、コード・要点・
+      クイズ教材画面、複数背景、キャラクターの呼吸・発話強調・感情リアクション、映像演出を
+      含む台本プロンプト、場面タイムラインとYouTube視聴維持率を結ぶInsight生成
+- [x] 却下後の救済フロー: 却下済み世代とApproval/Asset/Reviewを監査履歴として保持し、
+      次generationのVideoProjectを作成してLLMキャッシュを分離した台本再生成を開始
 
 ## 未解決事項
 

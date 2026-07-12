@@ -10,14 +10,17 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
 from app.core.csrf import CSRF_COOKIE_NAME, get_or_issue_csrf_token, set_csrf_cookie, verify_csrf
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.review import Review
 from app.models.video_project import VideoProject
 from app.services.reviews import approval
 from app.services.state_machine import InvalidTransitionError
 from app.web.common import with_message
+from app.workers.tasks.scripts import generate_script_task
 
 router = APIRouter(tags=["web-approvals"])
+logger = get_logger(__name__)
 
 DbSession = Annotated[Session, Depends(get_db)]
 AdminUser = Annotated[str, Depends(require_admin)]
@@ -67,9 +70,7 @@ def show_review(
     return response
 
 
-def _review_redirect(
-    video_project_id: str, *, error: str | None = None
-) -> RedirectResponse:
+def _review_redirect(video_project_id: str, *, error: str | None = None) -> RedirectResponse:
     url = with_message(f"/video-projects/{video_project_id}/review", error=error)
     return RedirectResponse(url=url, status_code=303)
 
@@ -130,3 +131,39 @@ def reject_video_project(
         )
     db.commit()
     return RedirectResponse(url=f"/video-projects/{video_project_id}/review", status_code=303)
+
+
+@router.post("/video-projects/{video_project_id}/rebuild-from-script")
+def rebuild_video_project_from_script(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    admin_user: AdminUser,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
+    if not verify_csrf(cookie_token, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRF token invalid")
+    try:
+        replacement = approval.rebuild_from_script(db, video_project_id=video_project_id)
+        replacement_id = replacement.id
+        topic_id = replacement.topic_id
+        db.commit()
+    except approval.VideoProjectNotFoundError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        return _review_redirect(video_project_id, error=str(exc))
+
+    task = generate_script_task.delay(topic_id, replacement_id, replacement_id)
+    logger.info(
+        "video_project_rebuild_dispatched",
+        source_video_project_id=video_project_id,
+        replacement_video_project_id=replacement_id,
+        operator=admin_user,
+    )
+    return RedirectResponse(
+        url=(f"/video-projects/{replacement_id}?task_id={task.id}&task_label=台本から作り直し"),
+        status_code=303,
+    )

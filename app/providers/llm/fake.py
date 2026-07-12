@@ -135,6 +135,11 @@ def _generate_script_content(
                 ]
                 if dialogue_enabled
                 else [],
+                "visual_type": "key_point",
+                "background_style": "card",
+                "character_layout": "small_right",
+                "visual_title": "今日できるようになること",
+                "visual_bullets": ["全体像をつかむ", "重要ポイントを理解する"],
             },
             {
                 "heading": "本編",
@@ -142,6 +147,12 @@ def _generate_script_content(
                 "visual_instruction": "根拠となる出典を画面下部に表示する。",
                 "evidence_ids": [],
                 "dialogue": second_section_dialogue,
+                "visual_type": "code",
+                "background_style": "editor",
+                "character_layout": "small_left",
+                "visual_title": "コードで確認",
+                "code": 'print("Hello, Python!")',
+                "highlight_lines": [1],
             },
         ],
         "conclusion": "今回の内容を振り返り、次に取るべき行動をまとめます。",

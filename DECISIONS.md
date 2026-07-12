@@ -200,3 +200,22 @@ LLM生成直後の推定は音声化対象のsectionだけを日本語300文字/
 Episodeから作るTopicは`series:{series_id}:episode:{episode_id}`を自然キーにし、再操作でも重複しない。
 制作開始済みEpisodeが1件でもあれば全体再生成を拒否し、既存動画との学習順序をfail-closedで保護する。
 Episode編集・並べ替え後はシリーズをdraftへ戻し、再承認を要求する。
+
+## D-024: 学習動画は「装飾の多さ」ではなく意味のある画面遷移を正とする(2026-07-12)
+
+各ScriptSectionのJSONに`visual_type`、教材表示内容、背景スタイル、キャラクター配置を保存する。
+DB列は追加せず既存Script.bodyの後方互換を維持する。code/key_point/quiz/diagram/steps/dialogueを
+内容に応じて使い分け、単なるランダム背景や常時アニメーションは採用しない。
+
+字幕は画面下部の専用セーフエリアへ半透明背景付きで焼き込み、キャラ名は上部へ分離する。
+キャラクターは発話強調・呼吸・感情リアクションに限定して動かし、コードやクイズでは縮小または
+非表示にして教材を主役にする。レンダリング時には秒単位のscene_manifestを保存し、YouTube
+Analyticsの維持率低下点をvisual_typeへ対応付けてInsightを生成する。
+
+## D-025: 人間却下は旧世代の終端、新世代を台本から再開できる(2026-07-12)
+
+REJECTEDから同一VideoProjectを巻き戻すと、却下時に確認した動画・Review・Approvalとの対応が
+曖昧になるため行わない。却下済みProjectは終端のまま保持し、同一Topicでgenerationを1増やした
+VideoProjectを新規作成してRESEARCH_READYまで正規遷移させる。新Project IDを台本生成の
+regeneration_keyへ含め、同一制作設定でも過去のLLMキャッシュを再利用せず新しいScript versionを
+生成する。素材・字幕・動画は新世代で改めて作成し、旧世代の監査証跡は変更しない。

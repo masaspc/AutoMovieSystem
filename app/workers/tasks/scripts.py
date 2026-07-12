@@ -22,7 +22,9 @@ logger = get_logger(__name__)
 
 
 @celery_app.task(name="scripts.generate_script")
-def generate_script_task(topic_id: str) -> str:
+def generate_script_task(
+    topic_id: str, target_project_id: str = "", regeneration_key: str = ""
+) -> str:
     """Topic IDから台本を生成する(冪等。D-013: asyncio.runでプロバイダーを呼ぶ)。
 
     生成後、同一Topicに紐づく既存のVideoProjectがあれば台本を紐付け、検査結果に
@@ -37,6 +39,10 @@ def generate_script_task(topic_id: str) -> str:
             .order_by(VideoProject.generation.desc())
             .all()
         )
+        if target_project_id:
+            projects = [project for project in projects if project.id == target_project_id]
+            if not projects:
+                raise ValueError("作り直し対象のVideoProjectが見つかりません")
         latest_project = projects[0] if projects else None
         production_settings = (
             ProductionSettings.model_validate(latest_project.production_settings)
@@ -51,6 +57,7 @@ def generate_script_task(topic_id: str) -> str:
                 topic_id=topic_id,
                 provider=provider,
                 production_settings=production_settings,
+                regeneration_key=regeneration_key,
             )
         )
         for project in projects:

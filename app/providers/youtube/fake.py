@@ -19,6 +19,7 @@ from datetime import datetime
 
 from app.core.timeutil import utcnow_naive
 from app.providers.youtube.base import (
+    AudienceRetentionPoint,
     CommentData,
     UploadedVideoInfo,
     UploadRequest,
@@ -47,6 +48,7 @@ class FakeYouTubeProviderStore:
         self.videos: dict[str, _StoredVideo] = {}
         self.statistics: dict[str, VideoStatistics] = {}
         self.comments: dict[str, list[CommentData]] = {}
+        self.retention: dict[str, list[AudienceRetentionPoint]] = {}
         self.auth_ok: bool = True
         self._upload_counter: int = 0
 
@@ -54,6 +56,7 @@ class FakeYouTubeProviderStore:
         self.videos.clear()
         self.statistics.clear()
         self.comments.clear()
+        self.retention.clear()
         self.auth_ok = True
         self._upload_counter = 0
 
@@ -126,6 +129,11 @@ class FakeYouTubeProvider:
             collected_at=utcnow_naive(),
         )
 
+    async def get_audience_retention(
+        self, *, youtube_video_id: str
+    ) -> list[AudienceRetentionPoint]:
+        return list(self.store.retention.get(youtube_video_id, []))
+
     async def list_comments(
         self, *, youtube_video_id: str, page_token: str | None
     ) -> tuple[list[CommentData], str | None]:
@@ -142,3 +150,6 @@ class FakeYouTubeProvider:
 
     def seed_comments(self, youtube_video_id: str, comments: list[CommentData]) -> None:
         self.store.comments[youtube_video_id] = comments
+
+    def seed_retention(self, youtube_video_id: str, points: list[AudienceRetentionPoint]) -> None:
+        self.store.retention[youtube_video_id] = list(points)

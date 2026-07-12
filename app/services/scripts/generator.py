@@ -21,7 +21,7 @@ from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v3"
+PROMPT_VERSION = "script_v4_visual_direction"
 OPERATION = "generate_script"
 REPAIR_PROMPT_VERSION = "script_repair_v1"
 REPAIR_OPERATION = "repair_script_duration"
@@ -53,12 +53,16 @@ class TopicNotFoundError(ValueError):
 
 
 def build_idempotency_key(
-    topic_id: str, prompt_version: str = PROMPT_VERSION, settings_checksum: str = ""
+    topic_id: str,
+    prompt_version: str = PROMPT_VERSION,
+    settings_checksum: str = "",
+    regeneration_key: str = "",
 ) -> str:
     """`generate_script` の冪等キー。production_settingsのchecksumを含み、設定変更時は
     新しいキー(＝新しいJobRun)になり再生成される。
     """
-    return f"generate_script:{topic_id}:{prompt_version}:{settings_checksum[:16]}"
+    suffix = f":redo:{regeneration_key[:20]}" if regeneration_key else ""
+    return f"generate_script:{topic_id}:{prompt_version}:{settings_checksum[:16]}{suffix}"
 
 
 def _duration_instruction(
@@ -126,6 +130,11 @@ def _build_prompts(
     duration_instruction = _duration_instruction(
         production_settings, dialogue_enabled=settings.DIALOGUE_SCRIPT_ENABLED
     )
+    visual_types = (
+        "dialogue/code/key_point/quiz/diagram/steps"
+        if settings.DIALOGUE_SCRIPT_ENABLED
+        else "code/key_point/quiz/diagram/steps"
+    )
     system_prompt = (
         "あなたはYouTube動画の台本作家です。与えられた企画とリサーチ根拠(Evidence)をもとに、"
         "視聴者に価値を提供する構造化された台本を日本語で作成してください。"
@@ -135,6 +144,11 @@ def _build_prompts(
         f"{_template_instruction(production_settings)}"
         f"トーンは「{production_settings.tone}」を維持してください。"
         f"{dialogue_instruction}"
+        f"各sectionには映像演出も設計してください。visual_typeは{visual_types}から選び、"
+        "同じvisual_typeを3セクション以上連続させないでください。Pythonコードを説明する場面はcodeとcodeを、"
+        "重要事項はkey_pointとvisual_bullets、確認問題はquiz_question/quiz_options/quiz_answerを設定してください。"
+        "character_layoutは教材が主役のcode/diagramではsmall_leftまたはsmall_right、quizではhiddenを優先し、"
+        "背景や動きは説明に必要なものだけを指定してください。"
     )
     evidence_lines = "\n".join(
         f"- id={e.id} claim={e.claim} source={e.source_url}" for e in evidence_list
@@ -202,6 +216,7 @@ async def generate_script(
     provider: LLMProvider,
     trace_id: str | None = None,
     production_settings: ProductionSettings | None = None,
+    regeneration_key: str = "",
 ) -> Script:
     """Topic+EvidenceからLLMで台本を生成し、Scriptレコードを作成する(冪等)。
 
@@ -219,7 +234,9 @@ async def generate_script(
     evidence_list = session.query(Evidence).filter(Evidence.topic_id == topic_id).all()
     system_prompt, user_prompt = _build_prompts(topic, evidence_list, production_settings)
     system_prompt += build_series_script_context(session, topic_id)
-    idempotency_key = build_idempotency_key(topic_id, PROMPT_VERSION, settings_checksum)
+    idempotency_key = build_idempotency_key(
+        topic_id, PROMPT_VERSION, settings_checksum, regeneration_key
+    )
 
     async def _do_generate(job_run: JobRun) -> Script:
         result = await call_llm(

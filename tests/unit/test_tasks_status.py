@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 @dataclass
 class _FakeAsyncResult:
     state: str
+    info: dict | None = None
 
 
 def test_task_status_pending_returns_banner_fragment(
@@ -28,6 +29,34 @@ def test_task_status_pending_returns_banner_fragment(
     assert response.status_code == 200
     assert "台本生成" in response.text
     assert 'hx-get="/tasks/task-1/status' in response.text
+    assert "処理を実行しています" in response.text
+
+
+def test_task_status_progress_shows_stage_step_and_elapsed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.web.tasks_status.celery_app.AsyncResult",
+        lambda task_id: _FakeAsyncResult(
+            state="PROGRESS",
+            info={
+                "stage": "AIが全話のカリキュラムを生成しています",
+                "current": 2,
+                "total": 3,
+                "started_at": "2026-07-12T00:00:00+00:00",
+            },
+        ),
+    )
+
+    response = client.get(
+        "/tasks/task-1/status",
+        params={"redirect_url": "/series/abc", "label": "カリキュラム生成"},
+    )
+
+    assert response.status_code == 200
+    assert "AIが全話のカリキュラムを生成しています" in response.text
+    assert "ステップ 2/3" in response.text
+    assert "経過" in response.text
 
 
 def test_task_status_success_redirects_via_hx_redirect_header(

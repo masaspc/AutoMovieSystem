@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-MAX_CHARS_PER_LINE = 42
+MAX_CHARS_PER_LINE = 26
 MAX_LINES_PER_CUE = 2
 
 

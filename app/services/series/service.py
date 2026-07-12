@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
@@ -39,7 +40,11 @@ def _series_fingerprint(series: SeriesPlan) -> str:
 
 
 async def generate_curriculum(
-    session: Session, *, series_id: str, provider: LLMProvider
+    session: Session,
+    *,
+    series_id: str,
+    provider: LLMProvider,
+    progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> list[EpisodePlan]:
     series = session.get(SeriesPlan, series_id)
     if series is None:
@@ -54,7 +59,14 @@ async def generate_curriculum(
         raise ValueError("制作開始済みのEpisodeがあるためカリキュラムを再生成できません")
     idempotency_key = f"generate_curriculum:{series.id}:{_series_fingerprint(series)[:20]}"
 
+    def report_progress(stage: str, current: int) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, current, 3)
+
+    report_progress("シリーズ設定を整理しています", 1)
+
     async def _do_generate(job_run: JobRun) -> list[EpisodePlan]:
+        report_progress("AIが全話のカリキュラムを生成しています", 2)
         result = await call_llm(
             session,
             provider,
@@ -73,10 +85,11 @@ async def generate_curriculum(
                 "各話に学習目標、新規概念、復習概念、まだ扱わない概念、デモ、演習、次回接続を設定してください。"
             ),
             response_schema=CurriculumPlan,
-            model_policy="high",
+            model_policy="mid",
             idempotency_key=idempotency_key,
             job_run_id=job_run.id,
         )
+        report_progress("生成結果を検証して保存しています", 3)
         curriculum = CurriculumPlan.model_validate(result.data)
         if len(curriculum.episodes) != series.planned_episode_count:
             raise ValueError("生成されたEpisode数が計画数と一致しません")

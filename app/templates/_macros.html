@@ -16,14 +16,24 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro task_banner(task_id, task_label, redirect_url) -%}
+{% macro task_banner(task_id, task_label, redirect_url, task_stage=None, task_current=None, task_total=None, task_elapsed_seconds=None) -%}
 {% if task_id %}
 <div class="flash flash-warning task-banner" id="task-banner"
      hx-get="/tasks/{{ task_id }}/status?label={{ task_label | urlencode }}&redirect_url={{ redirect_url | urlencode }}"
      hx-trigger="load, every 2s"
      hx-swap="outerHTML">
   <span class="task-spinner"></span>
-  <span>{{ task_label }}を実行中です…(自動的に更新されます。ページを閉じても処理は続行します)</span>
+  <span class="task-banner-content">
+    <strong>{{ task_label }}を実行中</strong>
+    <span>{{ task_stage or '進行状況を確認しています' }}</span>
+    {% if task_current is not none and task_total %}
+    <span class="task-step">ステップ {{ task_current }}/{{ task_total }}</span>
+    {% endif %}
+    {% if task_elapsed_seconds is not none %}
+    <span class="task-elapsed">経過 {{ task_elapsed_seconds }}秒</span>
+    {% endif %}
+    <small>2秒ごとに自動更新されます。ページを閉じても処理は続行します。</small>
+  </span>
 </div>
 {% endif %}
 {%- endmacro %}

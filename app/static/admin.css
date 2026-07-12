@@ -429,6 +429,24 @@ form.inline { display: inline-block; margin: 0; }
   animation: task-spin 0.7s linear infinite;
 }
 
+.task-banner-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.task-banner-content small {
+  flex-basis: 100%;
+  opacity: 0.8;
+}
+
+.task-step,
+.task-elapsed {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 @keyframes task-spin {
   to {
     transform: rotate(360deg);

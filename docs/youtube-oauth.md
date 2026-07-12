@@ -3,6 +3,9 @@
 実YouTubeへアップロードする(`YOUTUBE_PROVIDER=real`)場合に必要な手順。
 Fakeプロバイダー(デフォルト)ではこの手順は不要。
 
+視聴維持率の場面分析には`yt-analytics.readonly`スコープも使用する。機能追加前に取得した
+リフレッシュトークンにはこのスコープがないため、OAuthセットアップスクリプトを再実行する。
+
 実シークレット(client_secret.json の中身・取得したリフレッシュトークン)は
 このリポジトリに一切コミットしないこと。
 
@@ -20,6 +23,7 @@ Fakeプロバイダー(デフォルト)ではこの手順は不要。
    - `https://www.googleapis.com/auth/youtube.upload`
    - `https://www.googleapis.com/auth/youtube.force-ssl`
    - `https://www.googleapis.com/auth/youtube.readonly`
+   - `https://www.googleapis.com/auth/yt-analytics.readonly`
 3. テストユーザーとして運用アカウントを追加する(公開審査前は指定ユーザーのみ利用可能)。
 
 ## 3. OAuthクライアント(Desktop app)の作成

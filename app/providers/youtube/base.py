@@ -52,6 +52,15 @@ class VideoStatistics:
 
 
 @dataclass(frozen=True)
+class AudienceRetentionPoint:
+    """動画内の相対位置ごとの視聴維持率。elapsed_ratioは0.0〜1.0。"""
+
+    elapsed_ratio: float
+    audience_watch_ratio: float
+    relative_retention_performance: float
+
+
+@dataclass(frozen=True)
 class CommentData:
     youtube_comment_id: str
     author_display_name: str
@@ -102,6 +111,10 @@ class YouTubeProvider(Protocol):
     async def set_schedule(self, *, youtube_video_id: str, publish_at: datetime) -> None: ...
 
     async def get_video_statistics(self, *, youtube_video_id: str) -> VideoStatistics: ...
+
+    async def get_audience_retention(
+        self, *, youtube_video_id: str
+    ) -> list[AudienceRetentionPoint]: ...
 
     async def list_comments(
         self, *, youtube_video_id: str, page_token: str | None

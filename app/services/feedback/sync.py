@@ -10,7 +10,8 @@ from app.models.comment import Comment
 from app.models.insight import Insight
 from app.models.publication import Publication
 from app.models.video_metric_daily import VideoMetricDaily
-from app.providers.youtube.base import YouTubeProvider
+from app.providers.youtube.base import AuthError, YouTubeProvider
+from app.services.analytics.retention import sync_retention_insights
 from app.services.analytics.sync import sync_video_metrics
 from app.services.comments.sync import sync_comments
 from app.services.feedback.insights import generate_publication_insights
@@ -30,6 +31,16 @@ async def sync_publication_feedback(
     metric = await sync_video_metrics(session, publication_id=publication_id, provider=provider)
     comments = await sync_comments(session, publication_id=publication_id, provider=provider)
     insights = generate_publication_insights(session, publication_id=publication_id)
+    if hasattr(provider, "get_audience_retention"):
+        try:
+            retention_insights = await sync_retention_insights(
+                session, publication_id=publication_id, provider=provider
+            )
+        except AuthError:
+            # 既存OAuthトークンにAnalyticsスコープがない環境でも、基本統計同期は継続する。
+            retention_insights = []
+        known_ids = {insight.id for insight in insights}
+        insights.extend(insight for insight in retention_insights if insight.id not in known_ids)
     session.flush()
     return FeedbackSyncResult(metric=metric, comments=comments, insights=insights)
 

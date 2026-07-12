@@ -10,7 +10,7 @@ from app.services.media.subtitles import (
 
 
 def test_build_cues_timestamps_are_proportional_to_section_duration() -> None:
-    # 42字*3行 -> 1行42字換算で3行 -> 最大2行/キューなので2キュー(2行+1行)に分割される。
+    # 字幕セーフエリア向けの短い行長で複数キューへ分割される。
     sections = [
         {"heading": "導入", "narration": "あ" * 126},
         {"heading": "本編", "narration": "い" * 42},
@@ -19,13 +19,12 @@ def test_build_cues_timestamps_are_proportional_to_section_duration() -> None:
 
     cues = build_cues(sections, section_durations=durations)
 
-    # セクション0: 3行 -> 2キュー、セクション0のみで尺10.0秒を専有する。
+    # 126字は26字/行で5行、最大2行/キューなので3キューになる。
     section0_cues = [c for c in cues if c.start_seconds < 10.0]
-    assert len(section0_cues) == 2
+    assert len(section0_cues) == 3
     assert section0_cues[0].start_seconds == 0.0
-    # 1キュー目は2行(84字)、2キュー目は1行(42字)なので2:1で尺を専有する。
-    assert abs(section0_cues[0].end_seconds - (10.0 * 84 / 126)) < 0.01
-    assert abs(section0_cues[1].end_seconds - 10.0) < 0.01
+    assert abs(section0_cues[0].end_seconds - (10.0 * 52 / 126)) < 0.01
+    assert abs(section0_cues[-1].end_seconds - 10.0) < 0.01
 
     section1_cues = [c for c in cues if c.start_seconds >= 10.0]
     assert len(section1_cues) == 1
@@ -33,7 +32,7 @@ def test_build_cues_timestamps_are_proportional_to_section_duration() -> None:
     assert abs(section1_cues[0].end_seconds - 15.0) < 0.01
 
 
-def test_build_cues_max_two_lines_and_42_chars_per_line() -> None:
+def test_build_cues_max_two_lines_and_safe_chars_per_line() -> None:
     narration = "あ" * 200
     sections = [{"heading": "本編", "narration": narration}]
     durations = [20.0]

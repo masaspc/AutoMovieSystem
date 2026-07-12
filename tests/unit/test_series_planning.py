@@ -11,6 +11,7 @@ from app.models.channel import Channel
 from app.models.episode_plan import EpisodePlan
 from app.models.series_plan import SeriesPlan
 from app.models.topic import Topic
+from app.models.usage_record import UsageRecord
 from app.models.video_project import VideoProject
 from app.providers.llm.fake import DeterministicFakeLLMProvider
 from app.services.series.context import build_series_script_context
@@ -61,11 +62,13 @@ def test_generate_curriculum_approve_and_start_episode(db_session: Session) -> N
     )
     assert [episode.position for episode in episodes] == [1, 2, 3]
     assert episodes[1].prerequisite_positions == [1]
+    usage = (
+        db_session.query(UsageRecord).filter(UsageRecord.operation == "generate_curriculum").one()
+    )
+    assert usage.model == "fake-mid"
 
     approve_curriculum(db_session, series)
-    topic, project_id = create_topic_from_episode(
-        db_session, series=series, episode=episodes[0]
-    )
+    topic, project_id = create_topic_from_episode(db_session, series=series, episode=episodes[0])
     db_session.commit()
 
     assert topic.source_ref.startswith(f"series:{series.id}:episode:")

@@ -336,3 +336,28 @@ def test_different_production_settings_trigger_regeneration(db_session: Session)
         )
     )
     assert script1_again.id == script1.id
+
+
+def test_regeneration_key_forces_new_script_version(db_session: Session) -> None:
+    topic = _make_topic(db_session)
+    provider = DeterministicFakeLLMProvider()
+    settings = ProductionSettings.from_preset("short")
+    first = asyncio.run(
+        generate_script(
+            db_session, topic_id=topic.id, provider=provider, production_settings=settings
+        )
+    )
+    db_session.commit()
+
+    rebuilt = asyncio.run(
+        generate_script(
+            db_session,
+            topic_id=topic.id,
+            provider=provider,
+            production_settings=settings,
+            regeneration_key="replacement-project-id",
+        )
+    )
+
+    assert rebuilt.id != first.id
+    assert rebuilt.version == first.version + 1

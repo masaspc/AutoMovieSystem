@@ -7,6 +7,9 @@ dispatchした後、画面側がこのエンドポイントを2秒間隔でポ�
 
 from __future__ import annotations
 
+from contextlib import suppress
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
@@ -39,8 +42,29 @@ def task_status(
         return response
 
     templates = request.app.state.templates
+    info = result.info if isinstance(getattr(result, "info", None), dict) else {}
+    stage = info.get("stage") or (
+        "ワーカーの開始を待っています" if result.state == "PENDING" else "処理を実行しています"
+    )
+    current = info.get("current")
+    total = info.get("total")
+    elapsed_seconds = None
+    started_at = info.get("started_at")
+    if isinstance(started_at, str):
+        with suppress(ValueError):
+            elapsed_seconds = max(
+                0, int((datetime.now(UTC) - datetime.fromisoformat(started_at)).total_seconds())
+            )
     return templates.TemplateResponse(
         request,
         "_task_banner_fragment.html",
-        {"task_id": task_id, "task_label": label, "redirect_url": redirect_url},
+        {
+            "task_id": task_id,
+            "task_label": label,
+            "redirect_url": redirect_url,
+            "task_stage": stage,
+            "task_current": current,
+            "task_total": total,
+            "task_elapsed_seconds": elapsed_seconds,
+        },
     )

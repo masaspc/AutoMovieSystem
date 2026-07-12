@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -69,3 +70,36 @@ def reject(
 
     logger.info("video_project_rejected", video_project_id=video_project_id, decided_by=decided_by)
     return project
+
+
+def rebuild_from_script(session: Session, *, video_project_id: str) -> VideoProject:
+    """却下済みProjectを履歴として残し、新世代を台本生成直前から開始する。"""
+    source = _get_video_project(session, video_project_id)
+    if source.status != "REJECTED":
+        raise ValueError("却下済みの動画だけ台本から作り直せます")
+    latest_generation = (
+        session.query(func.max(VideoProject.generation))
+        .filter(VideoProject.topic_id == source.topic_id)
+        .scalar()
+        or 0
+    )
+    replacement = VideoProject(
+        topic_id=source.topic_id,
+        generation=latest_generation + 1,
+        template_name=source.template_name,
+        aspect_ratio=source.aspect_ratio,
+        production_settings=dict(source.production_settings or {}),
+        status="TOPIC_CREATED",
+    )
+    session.add(replacement)
+    session.flush()
+    transition(replacement, "TOPIC_SCORED")
+    transition(replacement, "RESEARCH_READY")
+    session.flush()
+    logger.info(
+        "video_project_rebuild_from_script",
+        source_video_project_id=source.id,
+        replacement_video_project_id=replacement.id,
+        generation=replacement.generation,
+    )
+    return replacement

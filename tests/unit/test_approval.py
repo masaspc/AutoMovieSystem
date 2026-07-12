@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -11,6 +13,11 @@ from app.models.topic import Topic
 from app.models.video_project import VideoProject
 from app.services.reviews import approval
 from app.services.state_machine import InvalidTransitionError
+
+
+@dataclass
+class _TaskResult:
+    id: str = "rebuild-task"
 
 
 def _make_project(db_session: Session, *, status: str = "AUTOMATED_REVIEW_PASSED") -> VideoProject:
@@ -64,6 +71,24 @@ def test_reject_transitions_to_rejected(db_session: Session) -> None:
     approvals = db_session.query(Approval).filter(Approval.video_project_id == project.id).all()
     assert len(approvals) == 1
     assert approvals[0].decision == "rejected"
+
+
+def test_rebuild_from_script_creates_new_generation_and_preserves_rejected(
+    db_session: Session,
+) -> None:
+    source = _make_project(db_session)
+    source.production_settings = {"preset": "standard_5min"}
+    approval.reject(db_session, video_project_id=source.id, decided_by="reviewer")
+
+    replacement = approval.rebuild_from_script(db_session, video_project_id=source.id)
+    db_session.commit()
+
+    assert source.status == "REJECTED"
+    assert replacement.id != source.id
+    assert replacement.generation == 2
+    assert replacement.status == "RESEARCH_READY"
+    assert replacement.script_id is None
+    assert replacement.production_settings == source.production_settings
 
 
 def test_approve_from_invalid_state_raises_and_creates_no_approval(db_session: Session) -> None:
@@ -143,9 +168,7 @@ def test_web_approve_from_invalid_state_redirects_with_friendly_message_not_raw_
     assert post_response.headers["location"].startswith(
         f"/video-projects/{project.id}/review?error="
     )
-    assert (
-        db_session.query(Approval).filter(Approval.video_project_id == project.id).count() == 0
-    )
+    assert db_session.query(Approval).filter(Approval.video_project_id == project.id).count() == 0
 
 
 def test_web_reject_with_valid_csrf_token_succeeds(client: TestClient, db_session: Session) -> None:
@@ -168,3 +191,38 @@ def test_web_reject_with_valid_csrf_token_succeeds(client: TestClient, db_sessio
 
     recorded = db_session.query(Approval).filter(Approval.video_project_id == project.id).one()
     assert recorded.decided_by == "dev-anonymous"
+
+
+def test_web_rejected_project_can_rebuild_from_script(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = _make_project(db_session)
+    approval.reject(db_session, video_project_id=project.id, decided_by="reviewer")
+    db_session.commit()
+    captured: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        "app.web.approvals.generate_script_task.delay",
+        lambda topic_id, target_id, regeneration_key: (
+            captured.append((topic_id, target_id, regeneration_key)) or _TaskResult()
+        ),
+    )
+
+    page = client.get(f"/video-projects/{project.id}/review")
+    assert "台本から作り直す" in page.text
+    csrf_token = page.cookies["csrf_token"]
+    response = client.post(
+        f"/video-projects/{project.id}/rebuild-from-script",
+        data={"csrf_token": csrf_token},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    replacement = (
+        db_session.query(VideoProject)
+        .filter(VideoProject.topic_id == project.topic_id, VideoProject.generation == 2)
+        .one()
+    )
+    assert captured == [(project.topic_id, replacement.id, replacement.id)]
+    assert response.headers["location"].startswith(f"/video-projects/{replacement.id}?")

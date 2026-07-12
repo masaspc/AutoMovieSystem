@@ -59,6 +59,7 @@ def test_character_frames_use_open_mouth_variant_when_available(tmp_path: Path) 
     assets_dir = tmp_path / "characters"
     _write_portrait(assets_dir / "zundamon" / "normal.png", (80, 180, 120))
     _write_portrait(assets_dir / "zundamon" / "talk.png", (110, 230, 150))
+    _write_portrait(assets_dir / "zundamon" / "blink.png", (60, 120, 90))
     _write_portrait(assets_dir / "metan" / "normal.png", (180, 110, 180))
     background = tmp_path / "background.png"
     Image.new("RGB", (1920, 1080), (20, 30, 50)).save(background)
@@ -85,10 +86,11 @@ def test_character_frames_use_open_mouth_variant_when_available(tmp_path: Path) 
     frames = build_scene_frames(
         background=background,
         lines=lines,
-        durations=[0.5, 0.5],
+        durations=[4.0, 0.5],
         settings=settings,
         output_dir=tmp_path / "frames",
     )
 
     assert len(frames) > 2
     assert all(frame.path.exists() for frame in frames)
+    assert any("blink" in frame.path.name for frame in frames)

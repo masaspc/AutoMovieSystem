@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from google.auth.exceptions import RefreshError
@@ -38,6 +38,7 @@ from app.core.timeutil import utcnow_naive
 from app.db.session import SessionLocal
 from app.models.oauth_token import OAuthToken
 from app.providers.youtube.base import (
+    AudienceRetentionPoint,
     AuthError,
     CommentData,
     QuotaExceededError,
@@ -55,7 +56,8 @@ TOKEN_URI = "https://oauth2.googleapis.com/token"  # noqa: S105 - URLであり�
 UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 FORCE_SSL_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
 READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
-DEFAULT_SCOPES = (UPLOAD_SCOPE, FORCE_SSL_SCOPE, READONLY_SCOPE)
+ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+DEFAULT_SCOPES = (UPLOAD_SCOPE, FORCE_SSL_SCOPE, READONLY_SCOPE, ANALYTICS_SCOPE)
 
 _MAX_RETRIES = 3
 _YOUTUBE_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.000Z"
@@ -304,6 +306,43 @@ class RealYouTubeProvider:
 
     async def get_video_statistics(self, *, youtube_video_id: str) -> VideoStatistics:
         return await asyncio.to_thread(self._get_video_statistics_sync, youtube_video_id)
+
+    def _get_audience_retention_sync(self, youtube_video_id: str) -> list[AudienceRetentionPoint]:
+        credentials = self._build_credentials()
+        credentials.refresh(GoogleAuthRequest())
+        analytics = build("youtubeAnalytics", "v2", credentials=credentials, cache_discovery=False)
+        end_date = datetime.now(UTC).date()
+        start_date = end_date - timedelta(days=90)
+
+        def _query() -> Any:
+            return (
+                analytics.reports()
+                .query(
+                    ids="channel==MINE",
+                    startDate=start_date.isoformat(),
+                    endDate=end_date.isoformat(),
+                    metrics="audienceWatchRatio,relativeRetentionPerformance",
+                    dimensions="elapsedVideoTimeRatio",
+                    filters=f"video=={youtube_video_id}",
+                    sort="elapsedVideoTimeRatio",
+                )
+                .execute()
+            )
+
+        response = _run_with_retry(_query)
+        return [
+            AudienceRetentionPoint(
+                elapsed_ratio=float(row[0]),
+                audience_watch_ratio=float(row[1]),
+                relative_retention_performance=float(row[2]),
+            )
+            for row in response.get("rows", [])
+        ]
+
+    async def get_audience_retention(
+        self, *, youtube_video_id: str
+    ) -> list[AudienceRetentionPoint]:
+        return await asyncio.to_thread(self._get_audience_retention_sync, youtube_video_id)
 
     # --- list_comments ---------------------------------------------------------
 

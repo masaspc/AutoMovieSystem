@@ -203,9 +203,7 @@ def _build_audio_track(
     # 後段のaresampleとの境界でネゴシエーションに失敗することがある
     # (「Cannot select channel layout for the link between filters」)。
     # 連結前に各入力を明示的にmonoへ揃えて回避する。
-    formatted_inputs = "".join(
-        f"[{i}:a]aformat=channel_layouts=mono[a{i}];" for i in range(n)
-    )
+    formatted_inputs = "".join(f"[{i}:a]aformat=channel_layouts=mono[a{i}];" for i in range(n))
     concat_inputs = "".join(f"[a{i}]" for i in range(n))
     # loudnorm通過後も出力のチャンネルレイアウトが未確定のままとなり、最終aresampleで
     # 同じネゴシエーション失敗が起きるため、loudnormの直後にも明示指定を挟む。
@@ -317,7 +315,14 @@ def _mux_with_subtitles(
 ) -> None:
     """映像+音声を合成し、字幕を焼き込んでH.264+faststartでMP4出力する。"""
     escaped_subtitle = _escape_subtitles_filter_path(subtitle_path)
-    vf = f"subtitles='{escaped_subtitle}'"
+    # 画面下部に字幕専用セーフエリアを確保する。キャラ名は上部へ配置し、字幕は
+    # 半透明ボックス・縁取り付きで背景や立ち絵に埋もれないようにする。
+    force_style = (
+        "FontName=Noto Sans CJK JP,FontSize=34,PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00101010,BorderStyle=3,BackColour=&H90000000,"
+        "Outline=2,Shadow=0,Alignment=2,MarginL=150,MarginR=150,MarginV=48"
+    )
+    vf = f"subtitles='{escaped_subtitle}':force_style='{force_style}'"
     args = [
         "-y",
         "-i",

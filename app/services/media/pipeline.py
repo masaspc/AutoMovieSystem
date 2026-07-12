@@ -31,7 +31,7 @@ from app.models.video_project import VideoProject
 from app.providers.tts.base import TTSProvider
 from app.schemas.production_settings import ProductionSettings
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
-from app.services.media import characters, dialogue, renderer, subtitles
+from app.services.media import characters, dialogue, renderer, subtitles, visuals
 from app.services.media.probe import inspect_rendered_video
 from app.services.state_machine import transition
 
@@ -144,13 +144,15 @@ def _upsert_asset(
 def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
     """背景画像を生成しAsset登録する(冪等)。`SCRIPT_REVIEWED` -> `ASSETS_READY`。"""
     project = _get_video_project(session, video_project_id)
+    script = _get_script(session, project)
     idempotency_key = build_prepare_assets_idempotency_key(video_project_id)
 
     def _do_prepare() -> VideoProject:
+        sections = list((script.body or {}).get("sections") or [])
         relative_path = f"videos/{video_project_id}/background.png"
         output_path = resolve_generated_path(relative_path)
-        if not output_path.exists():
-            renderer.generate_background_image(output_path)
+        first_section = sections[0] if sections else {"heading": script.title}
+        visuals.generate_section_visual(first_section, output_path)
         checksum = renderer.compute_file_checksum(output_path)
 
         _upsert_asset(
@@ -162,6 +164,25 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
             checksum=checksum,
             meta={"role": "background"},
         )
+
+        for index, section in enumerate(sections):
+            section_path = resolve_generated_path(
+                f"videos/{video_project_id}/backgrounds/section_{index:02d}.png"
+            )
+            visuals.generate_section_visual(section, section_path)
+            _upsert_asset(
+                session,
+                video_project_id=video_project_id,
+                asset_type="image",
+                role=f"background:section:{index}",
+                file_path=section_path,
+                checksum=renderer.compute_file_checksum(section_path),
+                meta={
+                    "role": "section_background",
+                    "section_index": index,
+                    "visual_type": section.get("visual_type", "dialogue"),
+                },
+            )
 
         transition(project, "ASSETS_READY")
         session.flush()
@@ -375,10 +396,27 @@ def _fetch_background_asset(session: Session, video_project_id: str) -> Asset:
     return asset
 
 
+def _fetch_section_backgrounds(
+    session: Session, video_project_id: str, fallback: Asset
+) -> dict[int, Asset]:
+    assets = (
+        session.query(Asset)
+        .filter(
+            Asset.video_project_id == video_project_id,
+            Asset.role.like("background:section:%"),
+        )
+        .all()
+    )
+    result = {int((asset.meta or {}).get("section_index", 0)): asset for asset in assets}
+    if not result:
+        result[0] = fallback
+    return result
+
+
 def _compute_render_input_checksum(
     script: Script,
     audio_assets: list[Asset],
-    background_asset: Asset,
+    background_assets: list[Asset],
     *,
     aspect_ratio: str,
     endcard_enabled: bool,
@@ -390,7 +428,8 @@ def _compute_render_input_checksum(
     hasher.update(json.dumps(script.body or {}, sort_keys=True, ensure_ascii=True).encode("utf-8"))
     for asset in audio_assets:
         hasher.update(asset.checksum.encode("utf-8"))
-    hasher.update(background_asset.checksum.encode("utf-8"))
+    for background_asset in background_assets:
+        hasher.update(background_asset.checksum.encode("utf-8"))
     hasher.update(character_fingerprint.encode("utf-8"))
     hasher.update(
         f"|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
@@ -429,6 +468,9 @@ def render_video(
             "(synthesize_audio未実行または不完全)"
         )
     background_asset = _fetch_background_asset(session, video_project_id)
+    section_background_assets = _fetch_section_backgrounds(
+        session, video_project_id, background_asset
+    )
 
     endcard_enabled = True
     endcard_duration_seconds = renderer.DEFAULT_ENDCARD_DURATION_SECONDS
@@ -442,7 +484,7 @@ def render_video(
     input_checksum = _compute_render_input_checksum(
         script,
         audio_assets,
-        background_asset,
+        [section_background_assets[index] for index in sorted(section_background_assets)],
         aspect_ratio=project.aspect_ratio,
         endcard_enabled=endcard_enabled,
         endcard_duration_seconds=endcard_duration_seconds,
@@ -469,16 +511,33 @@ def render_video(
         srt_path.write_text(srt_text, encoding="utf-8")
         vtt_path.write_text(vtt_text, encoding="utf-8")
 
+        background_paths = {
+            index: Path(asset.file_path) for index, asset in section_background_assets.items()
+        }
         scene_frames = (
             characters.build_scene_frames(
-                background=Path(background_asset.file_path),
+                backgrounds=background_paths,
                 lines=speech_lines,
                 durations=section_durations,
+                sections=list((script.body or {}).get("sections") or []),
                 settings=settings,
                 output_dir=srt_path.parent / f"scenes_{input_checksum[:16]}",
             )
             if character_render_enabled
-            else []
+            else visuals.build_background_frames(
+                background_paths,
+                [line.section_index for line in speech_lines],
+                section_durations,
+            )
+        )
+
+        manifest_path = visuals.write_scene_manifest(
+            list((script.body or {}).get("sections") or []),
+            [line.section_index for line in speech_lines],
+            section_durations,
+            resolve_generated_path(
+                f"videos/{video_project_id}/scene_manifest_{input_checksum[:16]}.json"
+            ),
         )
 
         render_inputs = renderer.RenderInputs(
@@ -541,6 +600,15 @@ def render_video(
             file_path=vtt_path,
             checksum=renderer.compute_file_checksum(vtt_path),
             meta={"kind": "vtt"},
+        )
+        _upsert_asset(
+            session,
+            video_project_id=video_project_id,
+            asset_type="other",
+            role="scene_manifest",
+            file_path=manifest_path,
+            checksum=renderer.compute_file_checksum(manifest_path),
+            meta={"kind": "scene_timeline"},
         )
 
         session.flush()

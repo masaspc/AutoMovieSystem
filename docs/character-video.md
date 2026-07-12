@@ -10,6 +10,18 @@
 3. 立ち絵を話者の位置に合成し、`talk.png` があれば口を開いた差分と交互表示する
 4. 字幕、音声、エンドカードをFFmpegで合成し、H.264/AAC MP4を作る
 
+## 学習動画向けの画面演出
+
+台本の各セクションは`visual_type`を持ち、会話、コード、要点カード、クイズ、図解、手順の
+教材画面へ切り替わる。背景はセクションごとに生成され、コード行の強調、箇条書き、選択肢を
+表示できる。キャラクターは教材画面では小さく配置し、クイズでは非表示にできる。
+
+字幕は下部セーフエリア、キャラクター名は上部に分離する。発話中は口パクに加えて軽い呼吸、
+拡大、感情アイコンを使うが、学習内容と無関係な常時アニメーションは行わない。
+
+レンダリング時に`scene_manifest` Assetを生成し、各場面の開始・終了秒とvisual_typeを保存する。
+YouTube Analytics同期では視聴維持率の低下点をこの場面情報へ対応付け、Insight画面の改善候補にする。
+
 ## VOICEVOX Engineの起動
 
 Docker ComposeではVOICEVOXを任意profileとしている。`.env` に以下を設定する。
@@ -42,6 +54,7 @@ VOICEVOXをホストOSへ直接インストールしている場合は、Compose
 assets/characters/
   zundamon/normal.png
   zundamon/talk.png       # 任意。口パク用
+  zundamon/blink.png      # 任意。まばたき用
   zundamon/happy.png      # 任意
   metan/normal.png
   metan/talk.png
@@ -50,6 +63,7 @@ assets/characters/
 
 - 各キャラクターの `normal.png` は必須
 - `talk.png` または `<emotion>_open.png` がある場合、発話中に0.18秒ごとに交互表示して口パクにする
+- `blink.png` または `<emotion>_blink.png` がある場合、発話中に定期的なまばたきを加える
 - 春日部つむぎは `DIALOGUE_CAST` に含めた場合だけ選択候補となり、セリフのある場面だけ画面へ表示する
 - 素材不足時はレンダリングを失敗させる。背景だけの動画へ黙ってフォールバックしない
 - `DIALOGUE_SCRIPT_ENABLED=false` (既定) の場合、`dialogue` が保存済みでも動画では従来どおり
