@@ -1,10 +1,13 @@
-"""シリーズ統一サムネイル自動生成(CTR向上・§動画ごとに3案生成し管理画面で選択)。
+"""シリーズ統一サムネイル自動生成(CTR向上・動画ごとに3案生成し管理画面で選択)。
 
-同一シリーズの動画は `app.services.media.branding.SeriesBranding` により常に同じ配色・
-エピソード番号バッジを持つ「番組」として統一される。描画は全て決定的(乱数不使用、または
-`video_project_id` をシードにした決定的擬似乱数)であり、同一入力からの再生成は常に
-同一チェックサムのファイルを生成する。
+デザイン方針(運用フィードバック反映):
+- YouTubeトレンドに合わせた「テキスト主体・インパクト重視」。立ち絵は使わない。
+- 文字は実測幅ベースの自動折り返し+自動縮小で描画するため、見切れは構造的に起きない。
+- 同一シリーズは `app.services.media.branding.SeriesBranding` により常に同じ配色・
+  エピソード番号バッジを持つ「番組」として統一される。
 
+描画は全て決定的(乱数はvideo_project_idシードの決定的擬似乱数のみ)であり、
+同一入力からの再生成は常に同一チェックサムのファイルを生成する。
 `THUMBNAIL_SPEC_VERSION` を上げるとレイアウト実装変更を全既存動画へ反映できる
 (既存Assetの `meta.spec_version` が現行と不一致になり再生成される)。
 """
@@ -13,14 +16,12 @@ from __future__ import annotations
 
 import math
 import random
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
 from app.core.paths import resolve_generated_path
 from app.models.asset import Asset
 from app.models.channel import Channel
@@ -28,7 +29,6 @@ from app.models.episode_plan import EpisodePlan
 from app.models.series_plan import SeriesPlan
 from app.models.topic import Topic
 from app.models.video_project import VideoProject
-from app.services.media import characters
 from app.services.media.branding import SeriesBranding, resolve_branding
 from app.services.media.pipeline import _get_script, _get_video_project, _upsert_asset
 from app.services.media.renderer import compute_file_checksum, find_japanese_font
@@ -38,13 +38,19 @@ THUMBNAIL_HEIGHT = 720
 # レイアウト実装(色・座標・合成方法等)を変えたら必ずインクリメントする。
 # 既存Assetの meta.spec_version と不一致になり、次回 generate_thumbnail_candidates 実行時
 # に再生成される(prepare_assets自体の冪等キーは変えない)。
-THUMBNAIL_SPEC_VERSION = 1
+# v2: テキスト主体デザインへ刷新(立ち絵廃止・自動フィットで見切れ解消・
+#     impact/split/minimalの3レイアウト)。
+THUMBNAIL_SPEC_VERSION = 2
 THUMBNAIL_CANDIDATE_COUNT = 3
 THUMBNAIL_ROLE_PREFIX = "thumbnail:candidate:"
 THUMBNAIL_ROLE_SELECTED = "thumbnail"
 
-# 候補indexごとに固定されたレイアウト(spec: A=bold, B=clean, C=pop)。
-_LAYOUTS: tuple[str, ...] = ("bold", "clean", "pop")
+# 候補indexごとに固定されたレイアウト。
+_LAYOUTS: tuple[str, ...] = ("impact", "split", "minimal")
+
+# エピソードバッジ等が占有する上部の予約領域(テキストはこの下から描画する)。
+_TOP_RESERVED = 170
+_SIDE_MARGIN = 64
 
 __all__ = [
     "THUMBNAIL_CANDIDATE_COUNT",
@@ -118,43 +124,83 @@ def _resolve_branding_and_context(
 def _resolve_thumbnail_texts(body: dict) -> list[str]:
     raw_texts = [str(t).strip() for t in (body.get("thumbnail_texts") or []) if str(t).strip()]
     if not raw_texts:
+        # 旧台本(thumbnail_texts無し)はタイトル全文を使う。切り詰めはしない
+        # (描画側の自動フィットが折り返し・縮小で必ず収める)。
         candidates = body.get("title_candidates") or []
-        fallback = str(candidates[0]).strip()[:12] if candidates else "今日のポイント"
+        fallback = str(candidates[0]).strip() if candidates else "今日のポイント"
         raw_texts = [fallback or "今日のポイント"]
     while len(raw_texts) < THUMBNAIL_CANDIDATE_COUNT:
         raw_texts.append(raw_texts[-1])
     return raw_texts[:THUMBNAIL_CANDIDATE_COUNT]
 
 
-def _pick_speaker(body: dict) -> str:
-    for section in body.get("sections") or []:
-        for line in section.get("dialogue") or []:
-            speaker = line.get("speaker")
-            if speaker in ("zundamon", "metan", "tsumugi"):
-                return str(speaker)
-    return "zundamon"
+# ---------------------------------------------------------------------------
+# 自動フィットのテキストエンジン(見切れを構造的に不可能にする)
+# ---------------------------------------------------------------------------
 
 
-def _load_character_portrait(settings: Settings, speaker: str) -> Image.Image | None:
-    """立ち絵素材が利用可能な場合のみ読み込む。失敗させずNoneを返す(テキストのみへ自動調整)。"""
-    if not settings.CHARACTER_RENDER_ENABLED:
-        return None
-    try:
-        portrait_path = characters._portrait_path(  # noqa: SLF001 - 同一ドメイン内の内部ヘルパー再利用
-            settings, speaker, "neutral", talking=False
-        )
-    except characters.CharacterAssetError:
-        return None
-    try:
-        with Image.open(portrait_path) as source:
-            return source.convert("RGBA").copy()
-    except OSError:
-        return None
+def _wrap_by_width(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_width: int,
+) -> list[str]:
+    """実測幅で貪欲に折り返す(CJKは1文字単位、英数字は単語単位を優先)。"""
+    lines: list[str] = []
+    current = ""
+    for char in text:
+        candidate = current + char
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = char
+    if current:
+        lines.append(current)
+    return lines
 
 
-def _wrap_punchline(text: str, *, max_chars_per_line: int, max_lines: int) -> list[str]:
-    lines = textwrap.wrap(text, width=max_chars_per_line) or [text]
-    return lines[:max_lines]
+@dataclass(frozen=True)
+class _FittedText:
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont
+    lines: list[str]
+    line_height: int
+
+    @property
+    def total_height(self) -> int:
+        return self.line_height * len(self.lines)
+
+
+def _fit_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    max_width: int,
+    max_height: int,
+    max_lines: int,
+    start_size: int = 170,
+    min_size: int = 40,
+) -> _FittedText:
+    """幅・高さ・行数の制約内で「行数が少ない」ことを優先して最大フォントを探す。
+
+    行数優先にすることで「変数を完全理/解」のような1文字だけ次行へ落ちる
+    不格好な折り返しを避ける(1行で収まるサイズがあればそちらを選ぶ)。
+    最小サイズでも収まらない場合は最小サイズの結果を返す(実用上、min_size=40で
+    max_lines行に収まらない日本語パンチラインはthumbnail_textsの想定外の長文のみ)。
+    """
+    for target_lines in range(1, max_lines + 1):
+        size = start_size
+        while size >= min_size:
+            font = _font(size)
+            lines = _wrap_by_width(draw, text, font, max_width)
+            line_height = round(size * 1.22)
+            if len(lines) <= target_lines and line_height * len(lines) <= max_height:
+                return _FittedText(font=font, lines=lines, line_height=line_height)
+            size -= 8
+    font = _font(min_size)
+    lines = _wrap_by_width(draw, text, font, max_width)[:max_lines]
+    return _FittedText(font=font, lines=lines, line_height=round(min_size * 1.22))
 
 
 def _draw_outlined_text(
@@ -165,10 +211,10 @@ def _draw_outlined_text(
     *,
     fill: tuple[int, int, int],
     outline: tuple[int, int, int] = (0, 0, 0),
-    outline_width: int = 8,
+    outline_width: int = 10,
 ) -> None:
     x, y = xy
-    step = max(2, outline_width // 2)
+    step = max(2, outline_width // 3)
     for dx in range(-outline_width, outline_width + 1, step):
         for dy in range(-outline_width, outline_width + 1, step):
             if dx == 0 and dy == 0:
@@ -177,21 +223,151 @@ def _draw_outlined_text(
     draw.text((x, y), text, font=font, fill=fill)
 
 
-def _fit_portrait(portrait: Image.Image, *, max_size: tuple[int, int]) -> Image.Image:
-    resized = portrait.copy()
-    resized.thumbnail(max_size, Image.Resampling.LANCZOS)
-    return resized
+def _draw_fitted_block(
+    draw: ImageDraw.ImageDraw,
+    fitted: _FittedText,
+    *,
+    top: int,
+    align: str,
+    text_color: tuple[int, int, int],
+    outline: tuple[int, int, int] = (0, 0, 0),
+    highlight: tuple[int, int, int] | None = None,
+) -> None:
+    """折り返し済みテキストブロックを描画する。highlight指定時は行背景帯を敷く。"""
+    y = top
+    for line in fitted.lines:
+        bbox = draw.textbbox((0, 0), line, font=fitted.font)
+        line_width = int(bbox[2] - bbox[0])
+        x = (THUMBNAIL_WIDTH - line_width) // 2 if align == "center" else _SIDE_MARGIN
+        if highlight is not None:
+            pad = 14
+            draw.rectangle(
+                (x - pad, y - 4, x + line_width + pad, y + fitted.line_height - 8),
+                fill=highlight,
+            )
+        _draw_outlined_text(draw, (x, y), line, fitted.font, fill=text_color, outline=outline)
+        y += fitted.line_height
 
 
-def _vertical_gradient(
-    width: int, height: int, top: tuple[int, int, int], bottom: tuple[int, int, int]
+# ---------------------------------------------------------------------------
+# レイアウト(テキスト主体・インパクト重視)
+# ---------------------------------------------------------------------------
+
+
+def _text_area(context: _SeriesContext) -> tuple[int, int]:
+    """テキストブロックに使える(top, height)。シリーズバッジがある場合は上部を予約する。"""
+    top = _TOP_RESERVED if context.position is not None else 90
+    return top, THUMBNAIL_HEIGHT - top - 70
+
+
+def _render_impact(
+    text: str,
+    *,
+    accent: tuple[int, int, int],
+    secondary: tuple[int, int, int],
+    text_color: tuple[int, int, int],
+    context: _SeriesContext,
 ) -> Image.Image:
-    image = Image.new("RGB", (width, height), top)
-    draw = ImageDraw.Draw(image)
-    for y in range(height):
-        ratio = y / max(1, height - 1)
-        color = tuple(round(top[i] + (bottom[i] - top[i]) * ratio) for i in range(3))
-        draw.line([(0, y), (width, y)], fill=color)
+    """濃色背景+極太テキスト+斜めアクセント帯。"""
+    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), secondary)
+    draw = ImageDraw.Draw(image, "RGBA")
+    # 下部の斜めアクセント帯(テキストの背後で視線を集める)。
+    draw.polygon(
+        [
+            (0, THUMBNAIL_HEIGHT),
+            (0, THUMBNAIL_HEIGHT * 0.62),
+            (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT * 0.82),
+            (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT),
+        ],
+        fill=(*accent, 255),
+    )
+    top, height = _text_area(context)
+    fitted = _fit_text(
+        draw,
+        text,
+        max_width=THUMBNAIL_WIDTH - _SIDE_MARGIN * 2,
+        max_height=height,
+        max_lines=3,
+    )
+    block_top = top + max(0, (height - fitted.total_height) // 2)
+    _draw_fitted_block(draw, fitted, top=block_top, align="left", text_color=text_color)
+    return image
+
+
+def _render_split(
+    text: str,
+    *,
+    accent: tuple[int, int, int],
+    secondary: tuple[int, int, int],
+    text_color: tuple[int, int, int],
+    context: _SeriesContext,
+) -> Image.Image:
+    """アクセント色ベタ+行ハイライト帯(マーカー風)の中央寄せ。"""
+    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), accent)
+    draw = ImageDraw.Draw(image, "RGBA")
+    top, height = _text_area(context)
+    fitted = _fit_text(
+        draw,
+        text,
+        max_width=THUMBNAIL_WIDTH - _SIDE_MARGIN * 2 - 40,
+        max_height=height,
+        max_lines=3,
+        start_size=150,
+    )
+    block_top = top + max(0, (height - fitted.total_height) // 2)
+    _draw_fitted_block(
+        draw,
+        fitted,
+        top=block_top,
+        align="center",
+        text_color=text_color,
+        highlight=secondary,
+    )
+    return image
+
+
+def _render_minimal(
+    text: str,
+    *,
+    accent: tuple[int, int, int],
+    secondary: tuple[int, int, int],
+    text_color: tuple[int, int, int],
+    context: _SeriesContext,
+    seed: str,
+) -> Image.Image:
+    """ほぼ黒背景+集中線(控えめ)+中央極太テキスト+下部アクセントバー。"""
+    base = (16, 18, 24)
+    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), base)
+    draw = ImageDraw.Draw(image, "RGBA")
+
+    # 控えめな集中線(video_project_idシードの決定的擬似乱数、暗号用途ではない)。
+    rng = random.Random(f"thumbnail-minimal:{seed}")  # noqa: S311
+    center_x, center_y = THUMBNAIL_WIDTH // 2, THUMBNAIL_HEIGHT // 2
+    for i in range(20):
+        angle = (360 / 20) * i + rng.uniform(-5, 5)
+        width_deg = rng.uniform(2.5, 5)
+        r1 = math.radians(angle - width_deg)
+        r2 = math.radians(angle + width_deg)
+        p2 = (center_x + 1400 * math.cos(r1), center_y + 1400 * math.sin(r1))
+        p3 = (center_x + 1400 * math.cos(r2), center_y + 1400 * math.sin(r2))
+        if i % 2 == 0:
+            draw.polygon([(center_x, center_y), p2, p3], fill=(*secondary, 55))
+
+    draw.rectangle(
+        (0, THUMBNAIL_HEIGHT - 26, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), fill=(*accent, 255)
+    )
+    top, height = _text_area(context)
+    fitted = _fit_text(
+        draw,
+        text,
+        max_width=THUMBNAIL_WIDTH - _SIDE_MARGIN * 2,
+        max_height=height,
+        max_lines=3,
+    )
+    block_top = top + max(0, (height - fitted.total_height) // 2)
+    _draw_fitted_block(
+        draw, fitted, top=block_top, align="center", text_color=text_color, outline=accent
+    )
     return image
 
 
@@ -200,164 +376,36 @@ def _draw_episode_badge(
     *,
     position: int,
     series_name: str,
-    secondary_rgb: tuple[int, int, int],
+    accent_rgb: tuple[int, int, int],
     text_color: tuple[int, int, int],
 ) -> None:
+    """左上のエピソード番号+シリーズ名(上部の予約領域内に収める)。"""
     draw = ImageDraw.Draw(image, "RGBA")
-    cx, cy, radius = 115, 115, 85
-    # 背景がsecondary色のレイアウト(bold)でも円が溶けないよう白アウトラインを付ける。
-    draw.ellipse(
-        (cx - radius, cy - radius, cx + radius, cy + radius),
-        fill=(*secondary_rgb, 235),
-        outline=(255, 255, 255, 255),
-        width=5,
-    )
     label = f"#{position}"
-    font_number = _font(56)
-    bbox = draw.textbbox((0, 0), label, font=font_number)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(
-        (cx - text_w / 2 - bbox[0], cy - text_h / 2 - bbox[1]),
-        label,
-        font=font_number,
-        fill=text_color,
-    )
-    name_font = _font(26)
+    number_font = _font(72)
+    bbox = draw.textbbox((0, 0), label, font=number_font)
+    number_width = bbox[2] - bbox[0]
+
+    badge_width = number_width + 56
     draw.rounded_rectangle(
-        (10, cy + radius + 8, 10 + min(len(series_name) * 26 + 20, 420), cy + radius + 48),
-        radius=8,
-        fill=(0, 0, 0, 170),
+        (28, 26, 28 + badge_width, 128),
+        radius=18,
+        fill=(*accent_rgb, 255),
+        outline=(255, 255, 255, 255),
+        width=4,
     )
-    draw.text((20, cy + radius + 12), series_name[:16], font=name_font, fill=text_color)
+    draw.text((28 + 28 - bbox[0], 26 + (102 - (bbox[3] - bbox[1])) // 2 - bbox[1]), label,
+              font=number_font, fill=text_color)
 
-
-def _render_bold(
-    text: str,
-    *,
-    accent: tuple[int, int, int],
-    secondary: tuple[int, int, int],
-    text_color: tuple[int, int, int],
-    portrait: Image.Image | None,
-) -> Image.Image:
-    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), secondary)
-    draw = ImageDraw.Draw(image, "RGBA")
-    # 斜めのアクセント色帯。
-    draw.polygon(
-        [
-            (0, THUMBNAIL_HEIGHT * 0.35),
-            (THUMBNAIL_WIDTH, 0),
-            (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT * 0.15),
-            (0, THUMBNAIL_HEIGHT * 0.55),
-        ],
-        fill=(*accent, 235),
-    )
-    draw.polygon(
-        [
-            (0, THUMBNAIL_HEIGHT),
-            (0, THUMBNAIL_HEIGHT * 0.75),
-            (THUMBNAIL_WIDTH * 0.6, THUMBNAIL_HEIGHT),
-        ],
-        fill=(*accent, 160),
-    )
-
-    if portrait is not None:
-        fitted = _fit_portrait(portrait, max_size=(560, 700))
-        x = THUMBNAIL_WIDTH - fitted.width - 20
-        y = THUMBNAIL_HEIGHT - fitted.height
-        image.paste(fitted, (x, y), fitted)
-        text_area_width = 26
-    else:
-        text_area_width = 15
-
-    lines = _wrap_punchline(text, max_chars_per_line=text_area_width, max_lines=2)
-    font = _font(96 if len(lines) == 1 else 72)
-    # エピソードバッジ+シリーズ名ラベル(左上、〜y≒250)と重ならない高さから開始する。
-    y = 280
-    for line in lines:
-        _draw_outlined_text(draw, (70, y), line, font, fill=text_color)
-        y += 130
-    return image
-
-
-def _render_clean(
-    text: str,
-    *,
-    accent: tuple[int, int, int],
-    secondary: tuple[int, int, int],
-    text_color: tuple[int, int, int],
-    portrait: Image.Image | None,
-) -> Image.Image:
-    image = _vertical_gradient(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, secondary, accent)
-    draw = ImageDraw.Draw(image, "RGBA")
-
-    if portrait is not None:
-        fitted = _fit_portrait(portrait, max_size=(300, 420))
-        image.paste(fitted, (40, THUMBNAIL_HEIGHT - fitted.height - 20), fitted)
-
-    lines = _wrap_punchline(text, max_chars_per_line=12, max_lines=2)
-    font = _font(80)
-    total_height = len(lines) * 100
-    y = (THUMBNAIL_HEIGHT - total_height) // 2
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = round((THUMBNAIL_WIDTH - text_w) / 2)
-        _draw_outlined_text(draw, (x, y), line, font, fill=text_color, outline_width=6)
-        y += 100
-    return image
-
-
-def _render_pop(
-    text: str,
-    *,
-    accent: tuple[int, int, int],
-    secondary: tuple[int, int, int],
-    text_color: tuple[int, int, int],
-    portrait: Image.Image | None,
-    seed: str,
-) -> Image.Image:
-    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), accent)
-    draw = ImageDraw.Draw(image, "RGBA")
-
-    # 白の集中線風三角形(video_project_idシードの決定的擬似乱数、暗号用途ではない)。
-    rng = random.Random(f"thumbnail-pop:{seed}")  # noqa: S311
-    center_x, center_y = THUMBNAIL_WIDTH // 2, THUMBNAIL_HEIGHT // 2
-    max_radius = 1400
-    for i in range(24):
-        angle = (360 / 24) * i + rng.uniform(-4, 4)
-        radians = math.radians(angle)
-        width_deg = rng.uniform(4, 7)
-        r1 = math.radians(angle - width_deg)
-        r2 = math.radians(angle + width_deg)
-        p1 = (
-            center_x + max_radius * math.cos(radians) * 0.05,
-            center_y + max_radius * math.sin(radians) * 0.05,
-        )
-        p2 = (center_x + max_radius * math.cos(r1), center_y + max_radius * math.sin(r1))
-        p3 = (center_x + max_radius * math.cos(r2), center_y + max_radius * math.sin(r2))
-        if i % 2 == 0:
-            draw.polygon([p1, p2, p3], fill=(255, 255, 255, 40))
-
+    name_font = _font(30)
+    name = series_name[:18]
+    name_bbox = draw.textbbox((0, 0), name, font=name_font)
+    name_width = name_bbox[2] - name_bbox[0]
+    x0 = 28 + badge_width + 16
     draw.rounded_rectangle(
-        (140, 250, THUMBNAIL_WIDTH - 140, 470), radius=30, fill=(*secondary, 230)
+        (x0, 44, x0 + name_width + 32, 110), radius=12, fill=(0, 0, 0, 190)
     )
-
-    if portrait is not None:
-        fitted = _fit_portrait(portrait, max_size=(360, 520))
-        image.paste(
-            fitted, (THUMBNAIL_WIDTH - fitted.width - 30, THUMBNAIL_HEIGHT - fitted.height), fitted
-        )
-
-    lines = _wrap_punchline(text, max_chars_per_line=11, max_lines=2)
-    font = _font(70)
-    y = 280
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = round((THUMBNAIL_WIDTH - text_w) / 2)
-        _draw_outlined_text(draw, (x, y), line, font, fill=text_color, outline_width=6)
-        y += 95
-    return image
+    draw.text((x0 + 16, 58), name, font=name_font, fill=(255, 255, 255))
 
 
 def _render_thumbnail(
@@ -367,29 +415,28 @@ def _render_thumbnail(
     layout: str,
     branding: SeriesBranding,
     context: _SeriesContext,
-    portrait: Image.Image | None,
     video_project_id: str,
 ) -> None:
     accent = _hex_to_rgb(branding.accent_color)
     secondary = _hex_to_rgb(branding.secondary_color)
     text_color = _hex_to_rgb(branding.text_color)
 
-    if layout == "clean":
-        image = _render_clean(
-            text, accent=accent, secondary=secondary, text_color=text_color, portrait=portrait
+    if layout == "split":
+        image = _render_split(
+            text, accent=accent, secondary=secondary, text_color=text_color, context=context
         )
-    elif layout == "pop":
-        image = _render_pop(
+    elif layout == "minimal":
+        image = _render_minimal(
             text,
             accent=accent,
             secondary=secondary,
             text_color=text_color,
-            portrait=portrait,
+            context=context,
             seed=video_project_id,
         )
     else:
-        image = _render_bold(
-            text, accent=accent, secondary=secondary, text_color=text_color, portrait=portrait
+        image = _render_impact(
+            text, accent=accent, secondary=secondary, text_color=text_color, context=context
         )
 
     if context.series_name is not None and context.position is not None:
@@ -397,7 +444,7 @@ def _render_thumbnail(
             image,
             position=context.position,
             series_name=context.series_name,
-            secondary_rgb=secondary,
+            accent_rgb=accent,
             text_color=text_color,
         )
 
@@ -413,13 +460,10 @@ def generate_thumbnail_candidates(session: Session, *, video_project_id: str) ->
     """
     project = _get_video_project(session, video_project_id)
     script = _get_script(session, project)
-    settings = get_settings()
 
     body = script.body or {}
     texts = _resolve_thumbnail_texts(body)
     branding, context = _resolve_branding_and_context(session, project)
-    speaker = _pick_speaker(body)
-    portrait = _load_character_portrait(settings, speaker)
 
     assets: list[Asset] = []
     for index in range(THUMBNAIL_CANDIDATE_COUNT):
@@ -448,7 +492,6 @@ def generate_thumbnail_candidates(session: Session, *, video_project_id: str) ->
             layout=layout,
             branding=branding,
             context=context,
-            portrait=portrait,
             video_project_id=video_project_id,
         )
         checksum = compute_file_checksum(output_path)

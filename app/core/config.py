@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     # OFFでもSRT/VTTファイル自体はAssetとして生成される。
     SUBTITLE_BURN_IN_ENABLED: bool = False
 
+    # BGM/SE素材ディレクトリ(assets/bgm/README.md参照。素材が無ければ無音で完走する)。
+    BGM_ASSETS_DIR: str = "assets/bgm"
+    SE_ASSETS_DIR: str = "assets/se"
+
     # プロバイダー選択(デフォルトはすべてFake。実APIキー未設定でも全機能デモ可能: D-006)
     LLM_PROVIDER: str = "fake"
     TTS_PROVIDER: str = "fake"

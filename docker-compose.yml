@@ -55,7 +55,7 @@ services:
       - "8000:8000"
     volumes:
       - ./generated:/app/generated
-      - ./assets/characters:/app/assets/characters:ro
+      - ./assets:/app/assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +79,7 @@ services:
       VOICEVOX_BASE_URL: http://voicevox:50021
     volumes:
       - ./generated:/app/generated
-      - ./assets/characters:/app/assets/characters:ro
+      - ./assets:/app/assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
       VOICEVOX_BASE_URL: http://voicevox:50021
     volumes:
       - ./generated:/app/generated
-      - ./assets/characters:/app/assets/characters:ro
+      - ./assets:/app/assets:ro
     depends_on:
       postgres:
         condition: service_healthy

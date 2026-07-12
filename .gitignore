@@ -22,6 +22,12 @@ token*.json
 generated/
 assets/characters/*/
 !assets/characters/README.md
+# 音源(BGMはCC-BY等の外部素材、SEはscripts/generate_se.pyで再生成可能)。
+# 出所・クレジットの記録(*.credit.txt / README.md)はコミットする。
+assets/bgm/**/*.mp3
+assets/bgm/**/*.wav
+assets/bgm/**/*.ogg
+assets/se/*.wav
 sample_output/
 
 # OS / IDE

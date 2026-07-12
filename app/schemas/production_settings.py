@@ -100,6 +100,15 @@ class ProductionSettings(BaseModel):
     # 掛け合い台本時のセリフ比率ヒント(0.0〜1.0)。
     dialogue_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # --- 音響(Phase A) ---
+    # BGMの雰囲気。assets/bgm/<mood>/ から決定的に選曲される。"none"でBGMなし。
+    bgm_mood: Literal["none", "calm", "upbeat", "serious"] = "calm"
+    # セリフに対するBGMの基準音量(dB)。セリフ中はさらにダッキングで自動的に下がる。
+    bgm_volume_db: float = Field(default=-19.0, ge=-40.0, le=0.0)
+    # セクション切替などの効果音。
+    se_enabled: bool = True
+    se_volume_db: float = Field(default=-10.0, ge=-40.0, le=0.0)
+
     @model_validator(mode="before")
     @classmethod
     def _fill_preset_defaults(cls, data: Any) -> Any:

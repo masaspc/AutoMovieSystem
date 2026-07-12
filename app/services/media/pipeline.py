@@ -31,7 +31,7 @@ from app.models.video_project import VideoProject
 from app.providers.tts.base import TTSProvider
 from app.schemas.production_settings import ProductionSettings
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
-from app.services.media import characters, dialogue, renderer, subtitles, visuals
+from app.services.media import bgm, characters, dialogue, renderer, subtitles, visuals
 from app.services.media.probe import inspect_rendered_video
 from app.services.state_machine import transition
 
@@ -434,11 +434,12 @@ def _fetch_section_backgrounds(
     return result
 
 
-# レンダリング演出の実装(キャラ配置・字幕・トランジション等)を変えたら必ず上げる。
+# レンダリング演出の実装(キャラ配置・字幕・音響・トランジション等)を変えたら必ず上げる。
 # 入力チェックサムに含まれるため、古い実装で生成済みの動画キャッシュを再利用しなくなる。
 # v2: キャラ両端配置+右側反転+上下移動廃止、字幕焼き込みのデフォルトOFF化、
 #     scene concatの尺クランプ修正。
-RENDER_SPEC_VERSION = 2
+# v3: BGMダッキングミックス+セクション切替SE(Phase A: 音響)。
+RENDER_SPEC_VERSION = 3
 
 
 def _compute_render_input_checksum(
@@ -451,6 +452,7 @@ def _compute_render_input_checksum(
     endcard_duration_seconds: float,
     character_fingerprint: str,
     subtitle_burn_in: bool,
+    audio_fingerprint: str = "audio-mix-disabled",
 ) -> str:
     """script本文+各Assetのchecksum+レンダリング設定からレンダリング入力のハッシュを計算する。"""
     hasher = hashlib.sha256()
@@ -460,6 +462,7 @@ def _compute_render_input_checksum(
     for background_asset in background_assets:
         hasher.update(background_asset.checksum.encode("utf-8"))
     hasher.update(character_fingerprint.encode("utf-8"))
+    hasher.update(audio_fingerprint.encode("utf-8"))
     hasher.update(
         f"|spec={RENDER_SPEC_VERSION}|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
         f"endcard_duration={endcard_duration_seconds}|subtitle_burn_in={subtitle_burn_in}".encode()
@@ -510,6 +513,34 @@ def render_video(
         else "characters-disabled"
     )
 
+    # --- 音響(Phase A): BGM選曲とSE配置。素材が無ければ無音のまま完走する ---
+    production_settings = ProductionSettings.model_validate(
+        project.production_settings or ProductionSettings().model_dump()
+    )
+    section_durations = [float((a.meta or {}).get("duration_seconds", 0.0)) for a in audio_assets]
+    bgm_track = bgm.select_bgm(
+        video_project_id=video_project_id, mood=production_settings.bgm_mood, settings=settings
+    )
+    sound_effects: list[bgm.SoundEffect] = []
+    if production_settings.se_enabled:
+        section_start_offsets: list[float] = []
+        elapsed = 0.0
+        previous_section = None
+        for line, duration in zip(speech_lines, section_durations, strict=True):
+            if previous_section is not None and line.section_index != previous_section:
+                section_start_offsets.append(elapsed)
+            previous_section = line.section_index
+            elapsed += duration
+        sound_effects = bgm.transition_effects(section_start_offsets, settings)
+    audio_fingerprint = "|".join(
+        [
+            f"bgm={bgm_track.checksum if bgm_track else 'none'}",
+            f"bgm_volume={production_settings.bgm_volume_db:.1f}",
+            f"se={bgm.effects_fingerprint(sound_effects)}",
+            f"se_volume={production_settings.se_volume_db:.1f}",
+        ]
+    )
+
     input_checksum = _compute_render_input_checksum(
         script,
         audio_assets,
@@ -519,13 +550,11 @@ def render_video(
         endcard_duration_seconds=endcard_duration_seconds,
         character_fingerprint=character_fingerprint,
         subtitle_burn_in=settings.SUBTITLE_BURN_IN_ENABLED,
+        audio_fingerprint=audio_fingerprint,
     )
     idempotency_key = build_render_idempotency_key(video_project_id, input_checksum)
 
     def _do_render() -> VideoProject:
-        section_durations = [
-            float((a.meta or {}).get("duration_seconds", 0.0)) for a in audio_assets
-        ]
         subtitle_sections = [{"narration": line.text} for line in speech_lines]
         cues = subtitles.build_cues(subtitle_sections, section_durations=section_durations)
         srt_text = subtitles.render_srt(cues)
@@ -570,6 +599,14 @@ def render_video(
             ),
         )
 
+        audio_mix = renderer.AudioMixSpec(
+            bgm_path=bgm_track.path if bgm_track else None,
+            bgm_volume_db=production_settings.bgm_volume_db,
+            effects=[
+                (effect.path, effect.offset_seconds, production_settings.se_volume_db)
+                for effect in sound_effects
+            ],
+        )
         render_inputs = renderer.RenderInputs(
             video_project_id=video_project_id,
             aspect_ratio=project.aspect_ratio,
@@ -582,6 +619,7 @@ def render_video(
             endcard_enabled=endcard_enabled,
             endcard_duration_seconds=endcard_duration_seconds,
             scene_frames=scene_frames,
+            audio_mix=audio_mix,
         )
 
         try:
@@ -612,6 +650,31 @@ def render_video(
         project.output_path = str(result.output_path)
         project.checksum = result.checksum
         transition(project, "VIDEO_RENDERED")
+
+        # 検査済みの動画で実際に使ったBGMだけを記録する。BGMなしで再生成した場合は、
+        # 以前のクレジットが概要欄へ残らないよう古いAssetを削除する。
+        previous_bgm_asset = (
+            session.query(Asset)
+            .filter(Asset.video_project_id == video_project_id, Asset.role == "bgm")
+            .one_or_none()
+        )
+        if bgm_track is None:
+            if previous_bgm_asset is not None:
+                session.delete(previous_bgm_asset)
+        else:
+            _upsert_asset(
+                session,
+                video_project_id=video_project_id,
+                asset_type="audio",
+                role="bgm",
+                file_path=bgm_track.path,
+                checksum=bgm_track.checksum,
+                meta={
+                    "mood": bgm_track.mood,
+                    "credit": bgm_track.credit,
+                    "volume_db": production_settings.bgm_volume_db,
+                },
+            )
 
         _upsert_asset(
             session,

@@ -67,6 +67,8 @@ class RenderInputs:
     endcard_enabled: bool = True
     endcard_duration_seconds: float = DEFAULT_ENDCARD_DURATION_SECONDS
     scene_frames: list[SceneFrame] = field(default_factory=list)
+    # BGM・SEのミックス指定(Phase A: 音響)。Noneなら従来どおり声のみ。
+    audio_mix: AudioMixSpec | None = None
 
 
 @dataclass(frozen=True)
@@ -190,34 +192,98 @@ def _run_ffmpeg(ffmpeg_path: str, args: list[str], *, timeout: float) -> None:
         raise RenderError(f"FFmpeg実行に失敗しました: {exc}") from exc
 
 
-def _build_audio_track(
-    ffmpeg_path: str, section_audio_paths: list[Path], output: Path, *, timeout: float
-) -> None:
-    """セクション音声を連結し loudnorm(I=-16) で正規化、AAC 48kHzへエンコードする。"""
+@dataclass(frozen=True)
+class AudioMixSpec:
+    """BGM・SEのミックス指定(Phase A: 音響)。Noneまたは空なら従来どおり声のみ。"""
+
+    bgm_path: Path | None = None
+    bgm_volume_db: float = -19.0
+    # (SEファイル, 挿入位置秒, 音量dB) のリスト。
+    effects: list[tuple[Path, float, float]] = field(default_factory=list)
+
+
+def build_audio_mix_args(
+    section_audio_paths: list[Path],
+    output: Path,
+    *,
+    mix: AudioMixSpec | None = None,
+) -> list[str]:
+    """音声トラック構築のffmpeg引数を組み立てる(テスト可能な純関数)。
+
+    構成: セリフ連結 → (BGMがあれば)ループBGMをセリフをキーにサイドチェイン圧縮
+    (ダッキング=セリフ中はBGMが自動で下がる)してミックス → (SEがあれば)adelayで
+    指定位置に重ねる → loudnorm正規化 → AAC 48kHz。
+    ミックスは duration=first(セリフ長基準)で、BGMループがセリフ長を超えて
+    伸びることはない。
+    """
+    mix = mix or AudioMixSpec()
     input_args: list[str] = []
     for p in section_audio_paths:
         input_args += ["-i", str(p)]
 
     n = len(section_audio_paths)
     # concatフィルター直結だと、入力WAVのチャンネルレイアウトが推測値のままとなり、
-    # 後段のaresampleとの境界でネゴシエーションに失敗することがある
+    # 後段フィルターとの境界でネゴシエーションに失敗することがある
     # (「Cannot select channel layout for the link between filters」)。
     # 連結前に各入力を明示的にmonoへ揃えて回避する。
     formatted_inputs = "".join(f"[{i}:a]aformat=channel_layouts=mono[a{i}];" for i in range(n))
     concat_inputs = "".join(f"[a{i}]" for i in range(n))
+    filters = [
+        f"{formatted_inputs}{concat_inputs}concat=n={n}:v=0:a=1[voice]",
+    ]
+    current = "[voice]"
+    next_input = n
+
+    if mix.bgm_path is not None:
+        input_args += ["-stream_loop", "-1", "-i", str(mix.bgm_path)]
+        bgm_index = next_input
+        next_input += 1
+        filters.append(
+            f"[{bgm_index}:a]aformat=channel_layouts=mono,aresample={AUDIO_SAMPLE_RATE},"
+            f"volume={mix.bgm_volume_db:.1f}dB[bgm]"
+        )
+        # セリフをキーにBGMを圧縮(ダッキング)。セリフ側は2分岐して片方をキーに使う。
+        filters.append(f"{current}asplit=2[voice_mix][voice_key]")
+        filters.append(
+            "[bgm][voice_key]sidechaincompress="
+            "threshold=0.03:ratio=12:attack=25:release=350[bgm_ducked]"
+        )
+        filters.append(
+            "[voice_mix][bgm_ducked]amix=inputs=2:duration=first:"
+            "dropout_transition=0:normalize=0[with_bgm]"
+        )
+        current = "[with_bgm]"
+
+    if mix.effects:
+        se_labels: list[str] = []
+        for effect_index, (se_path, offset_seconds, volume_db) in enumerate(mix.effects):
+            input_args += ["-i", str(se_path)]
+            se_input = next_input
+            next_input += 1
+            delay_ms = max(0, round(offset_seconds * 1000))
+            filters.append(
+                f"[{se_input}:a]aformat=channel_layouts=mono,aresample={AUDIO_SAMPLE_RATE},"
+                f"volume={volume_db:.1f}dB,adelay={delay_ms}:all=1[se{effect_index}]"
+            )
+            se_labels.append(f"[se{effect_index}]")
+        filters.append(
+            f"{current}{''.join(se_labels)}amix=inputs={1 + len(se_labels)}:duration=first:"
+            f"dropout_transition=0:normalize=0[with_se]"
+        )
+        current = "[with_se]"
+
     # loudnorm通過後も出力のチャンネルレイアウトが未確定のままとなり、最終aresampleで
-    # 同じネゴシエーション失敗が起きるため、loudnormの直後にも明示指定を挟む。
-    filter_complex = (
-        f"{formatted_inputs}"
-        f"{concat_inputs}concat=n={n}:v=0:a=1[concatenated];"
-        f"[concatenated]loudnorm=I=-16:TP=-1.5:LRA=11,"
+    # ネゴシエーション失敗が起きるため、直後に明示指定を挟む。
+    filters.append(
+        f"{current}loudnorm=I=-16:TP=-1.5:LRA=11,"
         f"aformat=channel_layouts=mono,aresample={AUDIO_SAMPLE_RATE}[outa]"
     )
-    args = [
+
+    return [
         "-y",
         *input_args,
         "-filter_complex",
-        filter_complex,
+        ";".join(filters),
         "-map",
         "[outa]",
         "-c:a",
@@ -226,6 +292,18 @@ def _build_audio_track(
         "192k",
         str(output),
     ]
+
+
+def _build_audio_track(
+    ffmpeg_path: str,
+    section_audio_paths: list[Path],
+    output: Path,
+    *,
+    timeout: float,
+    mix: AudioMixSpec | None = None,
+) -> None:
+    """セリフ連結+BGM/SEミックス+loudnorm正規化でAAC 48kHzの音声トラックを作る。"""
+    args = build_audio_mix_args(section_audio_paths, output, mix=mix)
     _run_ffmpeg(ffmpeg_path, args, timeout=timeout)
 
 
@@ -470,7 +548,9 @@ def _render_impl(
     timeout = settings.MEDIA_FFMPEG_TIMEOUT_SECONDS
 
     audio_full = work_dir / "audio_full.m4a"
-    _build_audio_track(ffmpeg_path, inputs.section_audio_paths, audio_full, timeout=timeout)
+    _build_audio_track(
+        ffmpeg_path, inputs.section_audio_paths, audio_full, timeout=timeout, mix=inputs.audio_mix
+    )
     audio_duration = probe_video(audio_full).duration_seconds
 
     video_main = work_dir / "video_main.mp4"
