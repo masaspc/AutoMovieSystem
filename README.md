@@ -119,6 +119,14 @@ Jinja2+HTMX による管理画面で企画・台本・レビュー・公開状�
 構成テンプレートは`explainer`、`ranking`、`problem_solution`、`comparison`、`story`、
 `dialogue`、`shorts`を指定できる。
 
+同じ制作設定画面でBGMの雰囲気（なし・落ち着き・明るい・真剣）、BGM音量、
+セクション切替SEの有無と音量も指定できる。BGMはセリフ中に自動でダッキングされ、
+使用曲のクレジットはYouTube概要欄へ自動追記される。音源の配置・ライセンス管理は
+`assets/bgm/README.md`を参照すること。
+
+台本はキーワードテロップ、簡易グラフ、Pythonコードの色分け表示に対応する。
+背景生成は`BackgroundProvider`経由のため、将来は画像生成APIへ差し替えられる。
+
 ```powershell
 $body = @{
   preset = "standard_3min"

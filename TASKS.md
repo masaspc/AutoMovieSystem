@@ -86,14 +86,14 @@
 
 ## 動画クオリティアップ バックログ(2026-07-12 整理、優先順)
 
-- [ ] A. 音響: BGMProvider抽象化 + assets/bgm/(権利確認済み素材のみ・リポジトリ外管理)+
+- [x] A. 音響: BGM選曲ライブラリ + assets/bgm/(権利確認済み素材のみ・リポジトリ外管理)+
       sidechaincompressによるセリフ中の自動ダッキング + セクション切替SE +
       ProductionSettings.bgm_mood。★ユーザー作業: BGM/SE素材の権利確認・配置
 - [ ] B. 動く背景: キャラ表示時もKen Burns(背景カメラワーク)を失わないフィルターグラフ統合、
       セクション間xfadeトランジション。方向はvideo_project_id起点の決定的疑似乱数(冪等)
-- [ ] C. キーワードテロップ: 字幕OFF方針の補完としてemphasis_wordsの要点テロップ表示
+- [x] C. キーワードテロップ: 字幕OFF方針の補完としてemphasis_wordsの要点テロップ表示
       (モバイル無音視聴対策)
-- [ ] D. 情報デザイン: chart visual_typeの簡易グラフ、コードカードのシンタックスハイライト、
+- [x] D. 情報デザイン: chart visual_typeの簡易グラフ、コードカードのシンタックスハイライト、
       BackgroundProvider抽象化(画像生成API接続の将来受け口。テストはFake)
 - [ ] E. 分析ループ発展: 維持率×scene_type相関のInsight化→台本プロンプト自動反映
       (retention.pyの土台あり)
