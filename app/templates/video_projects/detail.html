@@ -150,7 +150,15 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="empty">素材準備の実行で生成されます</div>
+      {% if script %}
+      <div class="empty">サムネイルはまだ生成されていません</div>
+      <form method="post" action="/video-projects/{{ project.id }}/thumbnails/generate" style="margin-top: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn-secondary">サムネイルを生成</button>
+      </form>
+      {% else %}
+      <div class="empty">台本生成後に作成できます(素材準備でも自動生成されます)</div>
+      {% endif %}
       {% endif %}
     </div>
 

@@ -82,9 +82,11 @@ def _seed_candidates(
     db_session.commit()
 
 
-def test_detail_page_shows_empty_state_without_candidates(
+def test_detail_page_shows_generate_button_without_candidates(
     client: TestClient, db_session: Session
 ) -> None:
+    """候補未生成でも(サムネイル機能導入前に素材準備済みの既存プロジェクト等)、
+    詳細画面から手動生成できるボタンが表示される。"""
     channel = _make_channel(db_session)
     topic = _make_topic(db_session, channel)
     script = _make_script(db_session, topic)
@@ -93,7 +95,40 @@ def test_detail_page_shows_empty_state_without_candidates(
 
     response = client.get(f"/video-projects/{project.id}")
     assert response.status_code == 200
-    assert "素材準備の実行で生成されます" in response.text
+    assert "サムネイルはまだ生成されていません" in response.text
+    assert f"/video-projects/{project.id}/thumbnails/generate" in response.text
+
+
+def test_generate_thumbnails_route_creates_candidates(
+    client: TestClient, db_session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    channel = _make_channel(db_session)
+    topic = _make_topic(db_session, channel)
+    script = _make_script(db_session, topic)
+    project = _make_project(db_session, topic, script)
+    db_session.commit()
+    monkeypatch.setenv("GENERATED_DIR", str(tmp_path))
+
+    get_response = client.get(f"/video-projects/{project.id}")
+    csrf_token = get_response.cookies["csrf_token"]
+
+    response = client.post(
+        f"/video-projects/{project.id}/thumbnails/generate",
+        data={"csrf_token": csrf_token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    candidates = (
+        db_session.query(Asset)
+        .filter(
+            Asset.video_project_id == project.id,
+            Asset.role.like(f"{thumbnails.THUMBNAIL_ROLE_PREFIX}%"),
+        )
+        .all()
+    )
+    assert len(candidates) == thumbnails.THUMBNAIL_CANDIDATE_COUNT
+    assert all(Path(asset.file_path).exists() for asset in candidates)
 
 
 def test_detail_page_lists_thumbnail_candidates(

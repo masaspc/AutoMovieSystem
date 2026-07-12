@@ -434,6 +434,13 @@ def _fetch_section_backgrounds(
     return result
 
 
+# レンダリング演出の実装(キャラ配置・字幕・トランジション等)を変えたら必ず上げる。
+# 入力チェックサムに含まれるため、古い実装で生成済みの動画キャッシュを再利用しなくなる。
+# v2: キャラ両端配置+右側反転+上下移動廃止、字幕焼き込みのデフォルトOFF化、
+#     scene concatの尺クランプ修正。
+RENDER_SPEC_VERSION = 2
+
+
 def _compute_render_input_checksum(
     script: Script,
     audio_assets: list[Asset],
@@ -443,6 +450,7 @@ def _compute_render_input_checksum(
     endcard_enabled: bool,
     endcard_duration_seconds: float,
     character_fingerprint: str,
+    subtitle_burn_in: bool,
 ) -> str:
     """script本文+各Assetのchecksum+レンダリング設定からレンダリング入力のハッシュを計算する。"""
     hasher = hashlib.sha256()
@@ -453,8 +461,8 @@ def _compute_render_input_checksum(
         hasher.update(background_asset.checksum.encode("utf-8"))
     hasher.update(character_fingerprint.encode("utf-8"))
     hasher.update(
-        f"|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
-        f"endcard_duration={endcard_duration_seconds}".encode()
+        f"|spec={RENDER_SPEC_VERSION}|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
+        f"endcard_duration={endcard_duration_seconds}|subtitle_burn_in={subtitle_burn_in}".encode()
     )
     return hasher.hexdigest()
 
@@ -510,6 +518,7 @@ def render_video(
         endcard_enabled=endcard_enabled,
         endcard_duration_seconds=endcard_duration_seconds,
         character_fingerprint=character_fingerprint,
+        subtitle_burn_in=settings.SUBTITLE_BURN_IN_ENABLED,
     )
     idempotency_key = build_render_idempotency_key(video_project_id, input_checksum)
 

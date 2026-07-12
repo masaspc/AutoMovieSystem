@@ -1,12 +1,20 @@
-"""立ち絵キャラクターパックを読み込み、掛け合い用のフレームを生成する。"""
+"""立ち絵キャラクターパックを読み込み、掛け合い用のフレームを生成する。
+
+配置の方針(運用フィードバック反映):
+- 掛け合いの2人は画面の両端に立ち、右側のキャラクターは左右反転して内側(相手側)を
+  向く(反転はPILで行うため反転済み素材は不要)。
+- キャラクターは途中で消えない。コード表示等のビジュアル重視セクション
+  (character_layout が full 以外)でも、小さくなって両端に残る。
+- 立ち絵は上下に動かさない(口パク・瞬きの差分表示のみ。素材サイズが差分間で
+  異なっても、下端アンカー位置は共通サイズ枠で固定する)。
+"""
 
 from __future__ import annotations
 
 import hashlib
-import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from app.core.config import Settings
 from app.services.media.dialogue import SpeechLine
@@ -32,11 +40,15 @@ _CHARACTER_CREDITS = {
     "metan": "VOICEVOX:四国めたん",
     "tsumugi": "VOICEVOX:春日部つむぎ",
 }
-_POSITIONS = {
-    "zundamon": 90,
-    "tsumugi": 700,
-    "metan": 1320,
+# 画面上の立ち位置。left/rightは両端、centerは中央(つむぎはセリフがある時だけ登場)。
+_SIDES = {
+    "zundamon": "left",
+    "metan": "right",
+    "tsumugi": "center",
 }
+_SIDE_ORDER = {"left": 0, "center": 1, "right": 2}
+_EDGE_MARGIN = 60
+_BOTTOM_MARGIN = 60
 
 
 def character_credits(lines: list[SpeechLine]) -> list[str]:
@@ -101,25 +113,22 @@ def character_assets_fingerprint(settings: Settings, lines: list[SpeechLine]) ->
     return hasher.hexdigest()
 
 
-def _fit_portrait(image: Image.Image, *, active: bool, layout: str) -> Image.Image:
+def _fit_portrait(image: Image.Image, *, active: bool, compact: bool, mirror: bool) -> Image.Image:
     portrait = image.convert("RGBA")
-    max_size = (330, 570) if layout.startswith("small_") else (520, 780)
+    max_size = (330, 570) if compact else (520, 780)
     portrait.thumbnail(max_size, Image.Resampling.LANCZOS)
-    if active:
-        scale = 1.025
-        portrait = portrait.resize(
-            (round(portrait.width * scale), round(portrait.height * scale)),
-            Image.Resampling.LANCZOS,
-        )
+    if mirror:
+        # 右側に立つキャラクターは内側(相手側)を向くよう左右反転する(反転素材は不要)。
+        portrait = ImageOps.mirror(portrait)
     if not active:
         alpha = portrait.getchannel("A").point(lambda value: value * 0.45)
         portrait.putalpha(alpha)
     return portrait
 
 
-def _draw_nameplate(canvas: Image.Image, *, speaker: str, active: bool) -> None:
+def _draw_nameplate(canvas: Image.Image, *, speaker: str, active: bool, x: int) -> None:
     draw = ImageDraw.Draw(canvas)
-    x = _POSITIONS[speaker]
+    x = max(10, min(x, VIDEO_WIDTH_16_9 - 320))
     color = (86, 196, 125, 235) if active else (65, 72, 90, 190)
     draw.rounded_rectangle((x, 205, x + 310, 267), radius=12, fill=color)
     try:
@@ -128,6 +137,14 @@ def _draw_nameplate(canvas: Image.Image, *, speaker: str, active: bool) -> None:
         draw.text((x + 18, 221), _CHARACTER_NAMES[speaker], fill=(255, 255, 255), font=font)
     except Exception:  # noqa: BLE001 - フォントがない環境でも動画生成を継続する
         draw.text((x + 18, 221), speaker, fill=(255, 255, 255), font=ImageFont.load_default())
+
+
+def _portrait_x(side: str, portrait_width: int) -> int:
+    if side == "left":
+        return _EDGE_MARGIN
+    if side == "right":
+        return VIDEO_WIDTH_16_9 - portrait_width - _EDGE_MARGIN
+    return (VIDEO_WIDTH_16_9 - portrait_width) // 2
 
 
 def _compose_frame(
@@ -139,38 +156,34 @@ def _compose_frame(
     settings: Settings,
     output_path: Path,
     section: dict,
-    phase: int = 0,
     blinking: bool = False,
 ) -> Path:
     with Image.open(background) as source:
         canvas = source.convert("RGBA").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
     layout = str(section.get("character_layout") or "full")
+    # キャラクターは途中で消さない: full以外(コード表示・図解など)でも小さくして
+    # 両端に残す(視聴者が「番組の登場人物」を見失わないようにする)。
+    compact = layout != "full"
     speakers = {line.speaker for line in lines if line.speaker != "tsumugi"}
     if current.speaker == "tsumugi":
         speakers.add("tsumugi")
-    if layout == "hidden":
-        speakers.clear()
-    elif layout.startswith("small_"):
-        speakers = {current.speaker}
-    for speaker in sorted(speakers, key=lambda value: _POSITIONS[value]):
+    for speaker in sorted(speakers, key=lambda value: _SIDE_ORDER[_SIDES[value]]):
         active = speaker == current.speaker
         emotion = current.emotion if active else "neutral"
         portrait_path = (
             _blink_path(settings, speaker, emotion) if active and blinking else None
         ) or _portrait_path(settings, speaker, emotion, talking=talking and active)
+        side = _SIDES[speaker]
         with Image.open(portrait_path) as source:
-            portrait = _fit_portrait(source, active=active, layout=layout)
-        if layout == "small_left":
-            x = 60
-        elif layout == "small_right":
-            x = VIDEO_WIDTH_16_9 - portrait.width - 60
-        else:
-            x = _POSITIONS[speaker] + (520 - portrait.width) // 2
-        bob = round(math.sin(phase * math.pi / 2) * 4) if active else 0
-        y = VIDEO_HEIGHT_16_9 - portrait.height - 150 + bob
+            portrait = _fit_portrait(
+                source, active=active, compact=compact, mirror=(side == "right")
+            )
+        x = _portrait_x(side, portrait.width)
+        # 上下の動きは付けない(口パク・瞬きの差分のみ)。下端アンカーで固定する。
+        y = VIDEO_HEIGHT_16_9 - portrait.height - _BOTTOM_MARGIN
         canvas.alpha_composite(portrait, (x, y))
-        if layout == "full":
-            _draw_nameplate(canvas, speaker=speaker, active=active)
+        if not compact:
+            _draw_nameplate(canvas, speaker=speaker, active=active, x=x)
 
     if current.emotion != "neutral":
         draw = ImageDraw.Draw(canvas)
@@ -239,7 +252,6 @@ def build_scene_frames(
             settings=settings,
             output_path=output_dir / f"line_{line.index:03d}_open.png",
             section=section,
-            phase=1,
         )
         blink_source = _blink_path(settings, line.speaker, line.emotion)
         blink = (
@@ -251,7 +263,6 @@ def build_scene_frames(
                 settings=settings,
                 output_path=output_dir / f"line_{line.index:03d}_blink.png",
                 section=section,
-                phase=2,
                 blinking=True,
             )
             if blink_source is not None

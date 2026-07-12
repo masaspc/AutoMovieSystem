@@ -503,6 +503,30 @@ _THUMBNAIL_FILENAMES = {
 } | {"selected.png"}
 
 
+@router.post("/video-projects/{video_project_id}/thumbnails/generate")
+def generate_thumbnails_route(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    """サムネイル候補を(再)生成する。
+
+    通常は素材準備ステップで自動生成されるが、サムネイル機能導入前に素材準備を
+    済ませた既存プロジェクト(prepare_assetsのJobRunが成功済みでスキップされる)でも
+    後から生成できるようにする。生成自体は決定的・冪等(spec_version一致なら再利用)。
+    """
+    require_csrf(request, csrf_token)
+    _require_video_project(video_project_id, db)
+    try:
+        thumbnails.generate_thumbnail_candidates(db, video_project_id=video_project_id)
+    except Exception as exc:  # noqa: BLE001 - Script未紐付け等をユーザー向けに表示する(500にしない)
+        db.rollback()
+        return _redirect_back(video_project_id, error=str(exc))
+    db.commit()
+    return _redirect_back(video_project_id, info="サムネイル候補を生成しました")
+
+
 @router.post("/video-projects/{video_project_id}/thumbnail/select")
 def select_thumbnail_route(
     video_project_id: str,

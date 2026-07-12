@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     MEDIA_FFMPEG_TIMEOUT_SECONDS: float = 300.0
     MEDIA_FFPROBE_TIMEOUT_SECONDS: float = 30.0
 
+    # 字幕の動画への焼き込み。デフォルトOFF(YouTubeの自動字幕/アップロード字幕に委ねる。
+    # 焼き込みは画面からはみ出す・消せない等のデメリットがあるため明示オプトイン)。
+    # OFFでもSRT/VTTファイル自体はAssetとして生成される。
+    SUBTITLE_BURN_IN_ENABLED: bool = False
+
     # プロバイダー選択(デフォルトはすべてFake。実APIキー未設定でも全機能デモ可能: D-006)
     LLM_PROVIDER: str = "fake"
     TTS_PROVIDER: str = "fake"

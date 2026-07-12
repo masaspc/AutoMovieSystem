@@ -313,33 +313,39 @@ def _build_scene_video_track(
     _run_ffmpeg(ffmpeg_path, args, timeout=timeout)
 
 
-def _mux_with_subtitles(
-    ffmpeg_path: str,
+def build_mux_args(
     video_path: Path,
     audio_path: Path,
-    subtitle_path: Path,
     output: Path,
     *,
-    timeout: float,
-) -> None:
-    """映像+音声を合成し、字幕を焼き込んでH.264+faststartでMP4出力する。"""
-    escaped_subtitle = _escape_subtitles_filter_path(subtitle_path)
-    # 画面下部に字幕専用セーフエリアを確保する。キャラ名は上部へ配置し、字幕は
-    # 半透明ボックス・縁取り付きで背景や立ち絵に埋もれないようにする。
-    force_style = (
-        "FontName=Noto Sans CJK JP,FontSize=34,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00101010,BorderStyle=3,BackColour=&H90000000,"
-        "Outline=2,Shadow=0,Alignment=2,MarginL=150,MarginR=150,MarginV=48"
-    )
-    vf = f"subtitles='{escaped_subtitle}':force_style='{force_style}'"
-    args = [
+    subtitle_path: Path | None,
+) -> list[str]:
+    """映像+音声合成のffmpeg引数を構築する(subtitle_path指定時のみ字幕を焼き込む)。
+
+    字幕焼き込みはデフォルト無効(`SUBTITLE_BURN_IN_ENABLED`)。YouTubeの自動字幕/
+    アップロード字幕に委ねる運用を既定とし、焼き込みは明示オプトインとする。
+    """
+    vf_args: list[str] = []
+    if subtitle_path is not None:
+        escaped_subtitle = _escape_subtitles_filter_path(subtitle_path)
+        # 注意: SRT焼き込み時のforce_styleの数値はlibassの既定PlayRes(384x288)基準で
+        # 解釈され、出力解像度に合わせて拡大される(1080pでは約3.75倍)。
+        # 以前はFontSize=34(→約127px)・MarginL/R=150(→約750px)となり文字が
+        # はみ出していた。1080p実寸でフォント約49px・左右マージン約120px・下48pxに
+        # なるよう384x288基準の値で指定する。行の折り返しはlibassがマージン内で自動処理。
+        force_style = (
+            "FontName=Noto Sans CJK JP,FontSize=13,PrimaryColour=&H00FFFFFF,"
+            "OutlineColour=&H00101010,BorderStyle=3,BackColour=&H90000000,"
+            "Outline=1,Shadow=0,Alignment=2,MarginL=24,MarginR=24,MarginV=13"
+        )
+        vf_args = ["-vf", f"subtitles='{escaped_subtitle}':force_style='{force_style}'"]
+    return [
         "-y",
         "-i",
         str(video_path),
         "-i",
         str(audio_path),
-        "-vf",
-        vf,
+        *vf_args,
         "-c:v",
         "libx264",
         "-c:a",
@@ -349,6 +355,19 @@ def _mux_with_subtitles(
         "+faststart",
         str(output),
     ]
+
+
+def _mux_audio_video(
+    ffmpeg_path: str,
+    video_path: Path,
+    audio_path: Path,
+    output: Path,
+    *,
+    subtitle_path: Path | None,
+    timeout: float,
+) -> None:
+    """映像+音声を合成しH.264+faststartでMP4出力する(字幕焼き込みは任意)。"""
+    args = build_mux_args(video_path, audio_path, output, subtitle_path=subtitle_path)
     _run_ffmpeg(ffmpeg_path, args, timeout=timeout)
 
 
@@ -467,8 +486,13 @@ def _render_impl(
         )
 
     muxed_main = work_dir / "muxed_main.mp4"
-    _mux_with_subtitles(
-        ffmpeg_path, video_main, audio_full, inputs.subtitle_srt_path, muxed_main, timeout=timeout
+    _mux_audio_video(
+        ffmpeg_path,
+        video_main,
+        audio_full,
+        muxed_main,
+        subtitle_path=(inputs.subtitle_srt_path if settings.SUBTITLE_BURN_IN_ENABLED else None),
+        timeout=timeout,
     )
 
     if inputs.endcard_enabled:
