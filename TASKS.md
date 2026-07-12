@@ -76,6 +76,30 @@
       含む台本プロンプト、場面タイムラインとYouTube視聴維持率を結ぶInsight生成
 - [x] 却下後の救済フロー: 却下済み世代とApproval/Asset/Reviewを監査履歴として保持し、
       次generationのVideoProjectを作成してLLMキャッシュを分離した台本再生成を開始
+- [x] シリーズ統一サムネイル: SeriesBranding(シリーズ名から決定的配色)+3レイアウト×
+      パンチライン3案生成、選択UI、YouTube set_thumbnail連携、既存プロジェクト向け
+      後付け生成ボタン。commit `210126b`/`12441b5`
+- [x] 実動画レビュー是正: キャラの上下移動全廃・非表示廃止(両端固定+右側PIL反転)、
+      字幕焼き込みのデフォルトOFF化(SUBTITLE_BURN_IN_ENABLED)+PlayResスケール修正、
+      RENDER_SPEC_VERSIONによる旧キャッシュ無効化、scene concat最終尺欠落のffmpeg
+      バージョン差対策(-tクランプ)。commit `12441b5`
+
+## 動画クオリティアップ バックログ(2026-07-12 整理、優先順)
+
+- [ ] A. 音響: BGMProvider抽象化 + assets/bgm/(権利確認済み素材のみ・リポジトリ外管理)+
+      sidechaincompressによるセリフ中の自動ダッキング + セクション切替SE +
+      ProductionSettings.bgm_mood。★ユーザー作業: BGM/SE素材の権利確認・配置
+- [ ] B. 動く背景: キャラ表示時もKen Burns(背景カメラワーク)を失わないフィルターグラフ統合、
+      セクション間xfadeトランジション。方向はvideo_project_id起点の決定的疑似乱数(冪等)
+- [ ] C. キーワードテロップ: 字幕OFF方針の補完としてemphasis_wordsの要点テロップ表示
+      (モバイル無音視聴対策)
+- [ ] D. 情報デザイン: chart visual_typeの簡易グラフ、コードカードのシンタックスハイライト、
+      BackgroundProvider抽象化(画像生成API接続の将来受け口。テストはFake)
+- [ ] E. 分析ループ発展: 維持率×scene_type相関のInsight化→台本プロンプト自動反映
+      (retention.pyの土台あり)
+- [ ] F. 運用: CIでのmedia/e2e実行確認(PR作成が必要)、docs更新(SUBTITLE_BURN_IN・
+      キャラ配置方針・BGM運用)、実YouTube OAuth設定(収益化の最終要件。
+      カスタムサムネイルはYouTube側の電話番号確認が前提)
 
 ## 未解決事項
 
