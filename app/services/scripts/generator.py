@@ -23,12 +23,18 @@ logger = get_logger(__name__)
 
 PROMPT_VERSION = "script_v5_thumbnail_texts"
 OPERATION = "generate_script"
-REPAIR_PROMPT_VERSION = "script_repair_v1"
+REPAIR_PROMPT_VERSION = "script_repair_v2"
 REPAIR_OPERATION = "repair_script_duration"
 # 尺が範囲外の場合の修復リトライ上限(仕様§10 D-013系: 無限リトライを避ける)。
 MAX_REPAIR_ATTEMPTS = 2
 # architecture.md モデルルーティングポリシー: 台本初稿・修復ともに mid。
 MODEL_POLICY = "mid"
+
+REPAIR_SYSTEM_PROMPT = (
+    "あなたはYouTube台本の編集者です。渡された台本の内容・根拠・構造を維持しながら、"
+    "指定された目標尺へ文章量を調整してください。新しい数値主張を根拠なく追加せず、"
+    "入力に存在するevidence_idsを削除しないでください。"
+)
 
 # script_template別の構成指示。
 _SCRIPT_TEMPLATE_INSTRUCTIONS: dict[str, str] = {
@@ -284,7 +290,9 @@ async def generate_script(
                 provider,
                 operation=REPAIR_OPERATION,
                 prompt_version=REPAIR_PROMPT_VERSION,
-                system_prompt=system_prompt,
+                # 初回生成用の企画・Evidence・演出指示を再送すると、台本JSONとの重複で
+                # コンテキストを浪費する。修復専用の短い指示へ切り替える。
+                system_prompt=REPAIR_SYSTEM_PROMPT,
                 user_prompt=repair_user_prompt,
                 response_schema=ScriptContent,
                 model_policy=MODEL_POLICY,

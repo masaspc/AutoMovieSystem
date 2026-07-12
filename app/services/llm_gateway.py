@@ -82,6 +82,11 @@ OPERATION_LIMITS: dict[str, OperationLimits] = {
     "generate_script": OperationLimits(
         max_input_tokens=8_000, max_output_tokens=4_000, max_cost_micro_usd=3_000_000
     ),
+    # 長尺修復は生成済みの台本JSON全体を入力へ含めるため、通常生成より入力枠が必要。
+    # 既定値(4,000)へフォールバックさせると5分前後の台本をLLM呼び出し前に拒否してしまう。
+    "repair_script_duration": OperationLimits(
+        max_input_tokens=12_000, max_output_tokens=6_000, max_cost_micro_usd=4_000_000
+    ),
     "classify_comment": OperationLimits(
         max_input_tokens=2_000, max_output_tokens=500, max_cost_micro_usd=200_000
     ),

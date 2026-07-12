@@ -209,6 +209,15 @@ def test_call_llm_warns_at_80_percent_without_raising(
     assert "ai_budget_exceeded" not in events
 
 
+def test_duration_repair_accepts_longer_input_than_initial_generation() -> None:
+    generate_limits = llm_gateway.OPERATION_LIMITS["generate_script"]
+    repair_limits = llm_gateway.OPERATION_LIMITS["repair_script_duration"]
+
+    assert repair_limits.max_input_tokens == 12_000
+    assert repair_limits.max_input_tokens > generate_limits.max_input_tokens
+    assert repair_limits.max_output_tokens >= generate_limits.max_output_tokens
+
+
 def test_call_llm_cost_limit_exceeded_before_budget_check(db_session: Session) -> None:
     provider = _StubProvider([{"value": "ok"}])
 
