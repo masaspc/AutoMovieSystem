@@ -5,7 +5,11 @@ from pathlib import Path
 from PIL import Image
 
 from app.core.config import Settings
-from app.services.media.characters import build_scene_frames, character_credits
+from app.services.media.characters import (
+    _portrait_path,
+    build_scene_frames,
+    character_credits,
+)
 from app.services.media.dialogue import extract_speech_lines
 
 
@@ -147,16 +151,16 @@ def test_characters_stay_visible_at_both_edges_even_with_hidden_layout(tmp_path:
         )
         with Image.open(frames[0].path) as frame:
             # 左端・右端の下半分にキャラクターのピクセルがある(=消えていない)。
-            assert _region_has_non_background_pixels(
-                frame, (0, 540, 450, 1080), bg_color
-            ), f"layout={layout}: 左端にキャラクターが描画されていません"
-            assert _region_has_non_background_pixels(
-                frame, (1470, 540, 1920, 1080), bg_color
-            ), f"layout={layout}: 右端にキャラクターが描画されていません"
+            assert _region_has_non_background_pixels(frame, (0, 540, 450, 1080), bg_color), (
+                f"layout={layout}: 左端にキャラクターが描画されていません"
+            )
+            assert _region_has_non_background_pixels(frame, (1470, 540, 1920, 1080), bg_color), (
+                f"layout={layout}: 右端にキャラクターが描画されていません"
+            )
             # 中央帯(コード表示等が入る領域)は空けたまま。
-            assert not _region_has_non_background_pixels(
-                frame, (800, 300, 1120, 700), bg_color
-            ), f"layout={layout}: 中央領域にキャラクターがはみ出しています"
+            assert not _region_has_non_background_pixels(frame, (800, 300, 1120, 700), bg_color), (
+                f"layout={layout}: 中央領域にキャラクターがはみ出しています"
+            )
 
 
 def test_open_and_closed_frames_keep_identical_anchor_no_vertical_motion(tmp_path: Path) -> None:
@@ -191,7 +195,22 @@ def test_open_and_closed_frames_keep_identical_anchor_no_vertical_motion(tmp_pat
 
     # 口閉じ/口開きの合成結果が完全一致する(=位置ずれ・上下移動が一切ない)。
     # 差分素材は同色・同サイズなので、位置が1pxでも動けば画像は一致しなくなる。
-    with Image.open(tmp_path / "frames" / "line_000_closed.png") as closed, Image.open(
-        tmp_path / "frames" / "line_000_open.png"
-    ) as opened:
+    with (
+        Image.open(tmp_path / "frames" / "line_000_closed.png") as closed,
+        Image.open(tmp_path / "frames" / "line_000_open.png") as opened,
+    ):
         assert closed.tobytes() == opened.tobytes()
+
+
+def test_optional_pose_asset_is_preferred_and_missing_pose_falls_back(tmp_path: Path) -> None:
+    assets_dir = tmp_path / "characters"
+    normal = assets_dir / "zundamon" / "normal.png"
+    pointing = assets_dir / "zundamon" / "pointing.png"
+    _write_portrait(normal, (80, 180, 120))
+    _write_portrait(pointing, (220, 80, 80))
+    settings = Settings(_env_file=None, CHARACTER_ASSETS_DIR=str(assets_dir))  # type: ignore[call-arg]
+
+    assert (
+        _portrait_path(settings, "zundamon", "neutral", talking=False, pose="pointing") == pointing
+    )
+    assert _portrait_path(settings, "zundamon", "neutral", talking=False, pose="thinking") == normal

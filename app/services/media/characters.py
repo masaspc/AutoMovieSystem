@@ -73,12 +73,21 @@ def _first_existing(directory: Path, names: tuple[str, ...]) -> Path | None:
     return None
 
 
-def _portrait_path(settings: Settings, speaker: str, emotion: str, *, talking: bool) -> Path:
+def _portrait_path(
+    settings: Settings,
+    speaker: str,
+    emotion: str,
+    *,
+    talking: bool,
+    pose: str = "",
+) -> Path:
     directory = _character_dir(settings, speaker)
-    names = (
+    pose_names = (f"{emotion}_{pose}_open.png", f"{pose}_open.png") if pose else ()
+    names = pose_names + (
         (f"{emotion}_open.png", "mouth_open.png", "talk.png", f"{emotion}.png", "normal.png")
         if talking
-        else (f"{emotion}.png", "normal.png")
+        else ((f"{emotion}_{pose}.png", f"{pose}.png") if pose else ())
+        + (f"{emotion}.png", "normal.png")
     )
     portrait = _first_existing(directory, names)
     if portrait is None:
@@ -101,6 +110,11 @@ def character_assets_fingerprint(settings: Settings, lines: list[SpeechLine]) ->
     if not settings.CHARACTER_RENDER_ENABLED:
         return "characters-disabled"
     hasher = hashlib.sha256()
+    speakers = {line.speaker for line in lines}
+    for speaker in sorted(speakers):
+        for portrait in sorted(_character_dir(settings, speaker).glob("*.png")):
+            hasher.update(str(portrait.resolve()).encode("utf-8"))
+            hasher.update(portrait.read_bytes())
     for line in lines:
         for talking in (False, True):
             portrait = _portrait_path(settings, line.speaker, line.emotion, talking=talking)
@@ -111,6 +125,19 @@ def character_assets_fingerprint(settings: Settings, lines: list[SpeechLine]) ->
             hasher.update(str(blink.resolve()).encode("utf-8"))
             hasher.update(blink.read_bytes())
     return hasher.hexdigest()
+
+
+def _pose_for_section(section: dict, emotion: str) -> str:
+    visual_type = str(section.get("visual_type") or "dialogue")
+    if visual_type == "quiz":
+        return "thinking"
+    if visual_type in {"code", "diagram", "steps", "chart"}:
+        return "pointing"
+    return {
+        "happy": "confident",
+        "serious": "warning",
+        "surprised": "question",
+    }.get(emotion, "")
 
 
 def _fit_portrait(image: Image.Image, *, active: bool, compact: bool, mirror: bool) -> Image.Image:
@@ -170,9 +197,16 @@ def _compose_frame(
     for speaker in sorted(speakers, key=lambda value: _SIDE_ORDER[_SIDES[value]]):
         active = speaker == current.speaker
         emotion = current.emotion if active else "neutral"
+        pose = _pose_for_section(section, emotion) if active else ""
         portrait_path = (
             _blink_path(settings, speaker, emotion) if active and blinking else None
-        ) or _portrait_path(settings, speaker, emotion, talking=talking and active)
+        ) or _portrait_path(
+            settings,
+            speaker,
+            emotion,
+            talking=talking and active,
+            pose=pose,
+        )
         side = _SIDES[speaker]
         with Image.open(portrait_path) as source:
             portrait = _fit_portrait(
@@ -238,8 +272,9 @@ def build_scene_frames(
             output_path=output_dir / f"line_{line.index:03d}_closed.png",
             section=section,
         )
-        open_path = _portrait_path(settings, line.speaker, line.emotion, talking=True)
-        closed_path = _portrait_path(settings, line.speaker, line.emotion, talking=False)
+        pose = _pose_for_section(section, line.emotion)
+        open_path = _portrait_path(settings, line.speaker, line.emotion, talking=True, pose=pose)
+        closed_path = _portrait_path(settings, line.speaker, line.emotion, talking=False, pose=pose)
         if open_path == closed_path or duration <= 0.3:
             frames.append(SceneFrame(path=closed, duration_seconds=duration))
             continue

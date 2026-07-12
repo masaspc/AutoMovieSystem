@@ -55,6 +55,11 @@ assets/characters/
   zundamon/normal.png
   zundamon/talk.png       # 任意。口パク用
   zundamon/blink.png      # 任意。まばたき用
+  zundamon/pointing.png   # 任意。コード・図解・手順の指差し
+  zundamon/thinking.png   # 任意。クイズの思考ポーズ
+  zundamon/confident.png  # 任意。成功・理解
+  zundamon/warning.png    # 任意。注意点
+  zundamon/question.png   # 任意。疑問・予想外
   zundamon/happy.png      # 任意
   metan/normal.png
   metan/talk.png
@@ -64,6 +69,8 @@ assets/characters/
 - 各キャラクターの `normal.png` は必須
 - `talk.png` または `<emotion>_open.png` がある場合、発話中に0.18秒ごとに交互表示して口パクにする
 - `blink.png` または `<emotion>_blink.png` がある場合、発話中に定期的なまばたきを加える
+- ポーズ素材があれば、`visual_type`と感情からpointing/thinking/confident/warning/questionを
+  自動選択する。素材がない場合は従来の感情・通常立ち絵へ安全にフォールバックする
 - 春日部つむぎは `DIALOGUE_CAST` に含めた場合だけ選択候補となり、セリフのある場面だけ画面へ表示する
 - 素材不足時はレンダリングを失敗させる。背景だけの動画へ黙ってフォールバックしない
 - `DIALOGUE_SCRIPT_ENABLED=false` (既定) の場合、`dialogue` が保存済みでも動画では従来どおり

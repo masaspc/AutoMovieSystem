@@ -6,17 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.models.episode_plan import EpisodePlan
 from app.models.series_plan import SeriesPlan
+from app.services.scripts.quality_context import build_quality_context
 
 
 def build_series_script_context(session: Session, topic_id: str) -> str:
-    episode = (
-        session.query(EpisodePlan).filter(EpisodePlan.topic_id == topic_id).one_or_none()
-    )
+    quality_context = build_quality_context(session, topic_id)
+    episode = session.query(EpisodePlan).filter(EpisodePlan.topic_id == topic_id).one_or_none()
     if episode is None:
-        return ""
+        return quality_context
     series = session.get(SeriesPlan, episode.series_plan_id)
     if series is None:
-        return ""
+        return quality_context
     previous = (
         session.query(EpisodePlan)
         .filter(
@@ -30,7 +30,7 @@ def build_series_script_context(session: Session, topic_id: str) -> str:
         f"- 第{item.position}回 {item.title}: 説明済み={', '.join(item.new_concepts)}"
         for item in previous
     ]
-    return (
+    return quality_context + (
         "\n\n[シリーズ制作上の必須制約]\n"
         f"シリーズ: {series.name}（全{series.planned_episode_count}回）\n"
         f"今回: 第{episode.position}回 {episode.title}\n"
