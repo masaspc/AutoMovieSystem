@@ -131,9 +131,9 @@ def _build_prompts(
         production_settings, dialogue_enabled=settings.DIALOGUE_SCRIPT_ENABLED
     )
     visual_types = (
-        "dialogue/code/key_point/quiz/diagram/steps"
+        "dialogue/code/key_point/quiz/diagram/steps/chart"
         if settings.DIALOGUE_SCRIPT_ENABLED
-        else "code/key_point/quiz/diagram/steps"
+        else "code/key_point/quiz/diagram/steps/chart"
     )
     system_prompt = (
         "あなたはYouTube動画の台本作家です。与えられた企画とリサーチ根拠(Evidence)をもとに、"
@@ -147,6 +147,8 @@ def _build_prompts(
         f"各sectionには映像演出も設計してください。visual_typeは{visual_types}から選び、"
         "同じvisual_typeを3セクション以上連続させないでください。Pythonコードを説明する場面はcodeとcodeを、"
         "重要事項はkey_pointとvisual_bullets、確認問題はquiz_question/quiz_options/quiz_answerを設定してください。"
+        "視聴者に覚えてほしい語句をemphasis_wordsへ最大5個設定してください。比較や数値推移はchartを選び、"
+        "chart_title/chart_labels/chart_valuesを同じ要素数で設定してください。"
         "character_layoutは教材が主役のcode/diagramではsmall_leftまたはsmall_right、quizではhiddenを優先し、"
         "背景や動きは説明に必要なものだけを指定してください。"
         "さらに、サムネイル用のパンチラインを3案 thumbnail_texts に出力してください。"

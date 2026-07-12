@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 CharacterId = Literal["zundamon", "metan", "tsumugi"]
 CharacterEmotion = Literal["neutral", "happy", "serious", "surprised"]
-VisualType = Literal["dialogue", "code", "key_point", "quiz", "diagram", "steps"]
+VisualType = Literal["dialogue", "code", "key_point", "quiz", "diagram", "steps", "chart"]
 BackgroundStyle = Literal["classroom", "editor", "card", "quiz", "diagram"]
 CharacterLayout = Literal["full", "small_left", "small_right", "hidden"]
 
@@ -34,6 +34,10 @@ class ScriptSection(BaseModel):
     visual_bullets: list[str] = Field(default_factory=list, max_length=6)
     code: str = Field(default="", max_length=10_000)
     highlight_lines: list[int] = Field(default_factory=list)
+    emphasis_words: list[str] = Field(default_factory=list, max_length=5)
+    chart_title: str = Field(default="", max_length=200)
+    chart_labels: list[str] = Field(default_factory=list, max_length=8)
+    chart_values: list[float] = Field(default_factory=list, max_length=8)
     quiz_question: str = Field(default="", max_length=500)
     quiz_options: list[str] = Field(default_factory=list, max_length=4)
     quiz_answer: str = Field(default="", max_length=500)

@@ -22,6 +22,7 @@ def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:
             "background_style": "editor",
             "code": 'print("hello")',
             "highlight_lines": [1],
+            "emphasis_words": ["print", "hello"],
         },
         {
             "heading": "確認問題",
@@ -34,6 +35,14 @@ def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:
             "heading": "要点",
             "visual_type": "key_point",
             "visual_bullets": ["一つ目", "二つ目"],
+        },
+        {
+            "heading": "比較",
+            "visual_type": "chart",
+            "chart_title": "学習時間の比較",
+            "chart_labels": ["開始前", "1週間後", "1か月後"],
+            "chart_values": [1, 4, 10],
+            "emphasis_words": ["継続", "10倍"],
         },
     ]
     for index, section in enumerate(sections):

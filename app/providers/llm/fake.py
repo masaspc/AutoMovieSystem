@@ -140,6 +140,7 @@ def _generate_script_content(
                 "character_layout": "small_right",
                 "visual_title": "今日できるようになること",
                 "visual_bullets": ["全体像をつかむ", "重要ポイントを理解する"],
+                "emphasis_words": ["全体像", "重要ポイント"],
             },
             {
                 "heading": "本編",
@@ -153,6 +154,7 @@ def _generate_script_content(
                 "visual_title": "コードで確認",
                 "code": 'print("Hello, Python!")',
                 "highlight_lines": [1],
+                "emphasis_words": ["print", "出力"],
             },
         ],
         "conclusion": "今回の内容を振り返り、次に取るべき行動をまとめます。",

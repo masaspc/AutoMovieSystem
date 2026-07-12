@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import keyword
+import re
 import textwrap
 from pathlib import Path
 
@@ -55,7 +57,36 @@ def _draw_code(draw: ImageDraw.ImageDraw, section: dict) -> None:
         if number in highlights:
             draw.rounded_rectangle((175, y - 5, 1735, y + 35), radius=8, fill=(45, 68, 48))
         draw.text((195, y), f"{number:>2}", fill=(112, 122, 140), font=_font(25))
-        draw.text((270, y), line[:78], fill=(225, 230, 240), font=_font(27))
+        _draw_python_line(draw, line[:78], 270, y)
+
+
+_CODE_TOKEN_RE = re.compile(r"(#[^\n]*|(?:\"[^\"]*\"|'[^']*')|\b\d+(?:\.\d+)?\b|\b[A-Za-z_]\w*\b)")
+
+
+def _draw_python_line(draw: ImageDraw.ImageDraw, line: str, x: int, y: int) -> None:
+    """標準的なPythonトークンを色分けして1行描画する。"""
+    font = _font(27)
+    cursor = float(x)
+    last = 0
+    for match in _CODE_TOKEN_RE.finditer(line):
+        plain = line[last : match.start()]
+        draw.text((cursor, y), plain, fill=(225, 230, 240), font=font)
+        cursor += draw.textlength(plain, font=font)
+        token = match.group(0)
+        if token.startswith("#"):
+            color = (118, 150, 105)
+        elif token[:1] in {'"', "'"}:
+            color = (206, 145, 120)
+        elif token[0].isdigit():
+            color = (181, 206, 168)
+        elif keyword.iskeyword(token):
+            color = (197, 134, 192)
+        else:
+            color = (86, 156, 214)
+        draw.text((cursor, y), token, fill=color, font=font)
+        cursor += draw.textlength(token, font=font)
+        last = match.end()
+    draw.text((cursor, y), line[last:], fill=(225, 230, 240), font=font)
 
 
 def _draw_bullets(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]) -> None:
@@ -101,6 +132,55 @@ def _draw_quiz(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int,
         )
 
 
+def _draw_chart(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]) -> None:
+    labels = [str(value) for value in section.get("chart_labels") or []][:8]
+    raw_values = section.get("chart_values") or []
+    values = [float(value) for value in raw_values[: len(labels)]]
+    if not labels or len(labels) != len(values):
+        _draw_bullets(draw, section, accent)
+        return
+    chart_title = str(section.get("chart_title") or section.get("visual_title") or "比較")
+    draw.text((190, 235), chart_title[:40], fill="white", font=_font(36, bold=True))
+    left, top, right, bottom = 230, 330, 1690, 835
+    draw.line((left, top, left, bottom), fill=(190, 200, 215), width=3)
+    draw.line((left, bottom, right, bottom), fill=(190, 200, 215), width=3)
+    maximum = max(max(values), 1.0)
+    slot = (right - left) / len(values)
+    for index, (label, value) in enumerate(zip(labels, values, strict=True)):
+        bar_width = min(120, int(slot * 0.62))
+        x0 = int(left + index * slot + (slot - bar_width) / 2)
+        height = int((bottom - top - 55) * max(0.0, value) / maximum)
+        y0 = bottom - height
+        draw.rounded_rectangle((x0, y0, x0 + bar_width, bottom), radius=12, fill=accent)
+        value_text = f"{value:g}"
+        draw.text((x0, y0 - 42), value_text, fill="white", font=_font(25))
+        draw.text((x0, bottom + 18), label[:9], fill=(230, 235, 245), font=_font(23))
+
+
+def _draw_emphasis_words(
+    draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]
+) -> None:
+    """字幕とは独立した短いキーワードテロップを中央セーフエリアへ表示する。"""
+    words = [
+        str(word).strip()
+        for word in section.get("emphasis_words") or []
+        if str(word).strip()
+    ]
+    if not words:
+        return
+    font = _font(30, bold=True)
+    words = words[:3]
+    widths = [int(draw.textlength(word[:18], font=font)) + 52 for word in words]
+    gap = 18
+    total_width = sum(widths) + gap * (len(widths) - 1)
+    x = max(500, (VIDEO_WIDTH_16_9 - total_width) // 2)
+    y = 930
+    for word, width in zip(words, widths, strict=True):
+        draw.rounded_rectangle((x, y, x + width, y + 64), radius=25, fill=(*accent, 235))
+        draw.text((x + 26, y + 14), word[:18], fill="white", font=font)
+        x += width + gap
+
+
 def generate_section_visual(section: dict, output_path: Path) -> Path:
     """セクションのvisual_typeに応じた1920x1080教材背景を生成する。"""
     style = str(section.get("background_style") or "classroom")
@@ -116,8 +196,11 @@ def generate_section_visual(section: dict, output_path: Path) -> Path:
         _draw_code(draw, section)
     elif visual_type == "quiz":
         _draw_quiz(draw, section, accent)
+    elif visual_type == "chart":
+        _draw_chart(draw, section, accent)
     else:
         _draw_bullets(draw, section, accent)
+    _draw_emphasis_words(draw, section, accent)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(output_path, "PNG")
     return output_path
