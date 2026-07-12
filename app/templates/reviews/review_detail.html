@@ -49,8 +49,8 @@
 
     <div class="card">
       <h3 class="card-title">却下</h3>
-      {% if project.status == "REJECTED" %}
-      <p class="muted">却下履歴を残したまま、新しい世代の動画を台本生成から開始します。</p>
+      {% if project.status in ["REJECTED", "UPLOAD_READY"] %}
+      <p class="muted">現在の成果物と承認履歴を残したまま、新しい世代の動画を台本生成から開始します。</p>
       <form method="post" action="/video-projects/{{ project.id }}/rebuild-from-script">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button type="submit">台本から作り直す</button>

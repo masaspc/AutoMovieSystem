@@ -91,6 +91,17 @@ def test_rebuild_from_script_creates_new_generation_and_preserves_rejected(
     assert replacement.production_settings == source.production_settings
 
 
+def test_approved_upload_ready_project_can_rebuild_from_script(db_session: Session) -> None:
+    source = _make_project(db_session)
+    approval.approve(db_session, video_project_id=source.id, decided_by="reviewer")
+
+    replacement = approval.rebuild_from_script(db_session, video_project_id=source.id)
+
+    assert source.status == "UPLOAD_READY"
+    assert replacement.generation == 2
+    assert replacement.status == "RESEARCH_READY"
+
+
 def test_approve_from_invalid_state_raises_and_creates_no_approval(db_session: Session) -> None:
     project = _make_project(db_session, status="VIDEO_RENDERED")
 
@@ -226,3 +237,17 @@ def test_web_rejected_project_can_rebuild_from_script(
     )
     assert captured == [(project.topic_id, replacement.id, replacement.id)]
     assert response.headers["location"].startswith(f"/video-projects/{replacement.id}?")
+
+
+def test_web_approved_project_still_shows_rebuild_button(
+    client: TestClient, db_session: Session
+) -> None:
+    project = _make_project(db_session)
+    approval.approve(db_session, video_project_id=project.id, decided_by="reviewer")
+    db_session.commit()
+
+    detail_page = client.get(f"/video-projects/{project.id}")
+    review_page = client.get(f"/video-projects/{project.id}/review")
+
+    assert "台本から作り直す" in detail_page.text
+    assert "台本から作り直す" in review_page.text
