@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}シリーズ | AutoMovie{% endblock %}
+{% block content %}
+<div class="page-header"><div><h2>シリーズ</h2><p class="page-desc">全体カリキュラムを先に設計し、学習順序を保って複数動画を制作します。</p></div></div>
+
+<div class="card">
+  <h3 class="card-title">新しいシリーズ</h3>
+  <form method="post" action="/series">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-row">
+      <div class="field"><label>チャンネル</label><select name="channel_id" required>{% for channel in channels %}<option value="{{ channel.id }}">{{ channel.name }}</option>{% endfor %}</select></div>
+      <div class="field" style="flex: 1;"><label>シリーズ名</label><input type="text" name="name" maxlength="255" placeholder="Python完全初心者講座" required /></div>
+      <div class="field"><label>予定本数</label><input type="number" name="planned_episode_count" min="2" max="100" value="10" required /></div>
+    </div>
+    <div class="field"><label>対象視聴者</label><textarea name="target_audience" rows="2" maxlength="5000" required>プログラミング未経験者</textarea></div>
+    <div class="field"><label>開始時点の知識</label><textarea name="starting_knowledge" rows="2" maxlength="5000" required>PCの基本操作のみ</textarea></div>
+    <div class="field"><label>最終到達目標</label><textarea name="final_goal" rows="2" maxlength="5000" required>Pythonで簡単なアプリを自力で作れる</textarea></div>
+    <div class="form-row">
+      <div class="field"><label>技術バージョン</label><input type="text" name="technology_version" value="Python 3.12" maxlength="128" /></div>
+      <div class="field"><label>開発環境</label><input type="text" name="development_environment" value="VS Code" maxlength="255" /></div>
+    </div>
+    <div class="field"><label>シリーズ全体の方向性</label><textarea name="series_prompt" rows="4" maxlength="10000" placeholder="例: 1動画につき新概念は最大3個。手を動かす時間を重視する。"></textarea></div>
+    <div class="field"><label>共通ルール・用語</label><textarea name="shared_rules" rows="3" maxlength="10000" placeholder="例: 変数名は英語。未説明の構文は使わない。"></textarea></div>
+    <button type="submit">シリーズを作成</button>
+  </form>
+</div>
+
+<div class="card"><h3 class="card-title">シリーズ一覧</h3><div class="table-wrap"><table>
+  <tr><th>シリーズ</th><th>状態</th><th>話数</th><th>最終目標</th></tr>
+  {% for series in series_list %}<tr><td><a href="/series/{{ series.id }}">{{ series.name }}</a></td><td>{{ status_badge(series.status) }}</td><td>{{ episode_counts.get(series.id, 0) }} / {{ series.planned_episode_count }}</td><td>{{ series.final_goal }}</td></tr>
+  {% else %}<tr><td colspan="4"><div class="empty">シリーズはまだありません</div></td></tr>{% endfor %}
+</table></div></div>
+{% endblock %}

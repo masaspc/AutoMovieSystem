@@ -15,6 +15,7 @@ celery_app = Celery(
     include=[
         "app.workers.tasks.health",
         "app.workers.tasks.scripts",
+        "app.workers.tasks.series",
         "app.workers.tasks.media",
         "app.workers.tasks.reviews",
         "app.workers.tasks.publishing",

@@ -14,6 +14,7 @@ from app.web.insights_page import router as insights_router
 from app.web.jobs_page import router as jobs_router
 from app.web.publications_page import router as publications_router
 from app.web.reviews_page import router as reviews_router
+from app.web.series_page import router as series_router
 from app.web.settings_page import router as settings_router
 from app.web.tasks_status import router as tasks_status_router
 from app.web.topics import router as topics_router
@@ -26,6 +27,7 @@ router.include_router(dashboard_router)
 router.include_router(growth_router)
 router.include_router(benchmarks_router)
 router.include_router(topics_router)
+router.include_router(series_router)
 router.include_router(video_projects_router)
 router.include_router(approvals_router)
 router.include_router(reviews_router)

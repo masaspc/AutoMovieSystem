@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -208,6 +209,34 @@ def _regenerate_script_section(
     return data
 
 
+def _generate_curriculum(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict:
+    del seed, operation, schema
+    match = re.search(r"episode_count=(\d+)", user_prompt)
+    count = int(match.group(1)) if match else 5
+    episodes = []
+    for position in range(1, count + 1):
+        previous_concept = f"第{position - 1}回の基礎" if position > 1 else ""
+        episodes.append(
+            {
+                "position": position,
+                "title": f"基礎ステップ{position}",
+                "summary": f"第{position}回で必要な基礎を順番に学びます。",
+                "learning_objectives": [f"ステップ{position}を自分で説明できる"],
+                "prerequisite_positions": [position - 1] if position > 1 else [],
+                "new_concepts": [f"概念{position}"],
+                "review_concepts": [previous_concept] if previous_concept else [],
+                "excluded_concepts": [f"概念{position + 1}"] if position < count else [],
+                "demo_outline": f"概念{position}の短い実演",
+                "exercise_outline": f"概念{position}を使う練習",
+                "next_episode_bridge": "次の概念につながる疑問を提示します。",
+                "target_duration_seconds": 300,
+            }
+        )
+    return {"episodes": episodes}
+
+
 def _classify_comment(
     seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
 ) -> dict:
@@ -250,6 +279,7 @@ _GENERATORS: dict[str, Generator] = {
     "generate_script": _generate_script_content,
     "repair_script_duration": _repair_script_duration,
     "regenerate_script_section": _regenerate_script_section,
+    "generate_curriculum": _generate_curriculum,
     "classify_comment": _classify_comment,
     "review_content": _review_content,
 }

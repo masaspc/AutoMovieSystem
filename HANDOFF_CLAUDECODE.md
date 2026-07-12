@@ -1,5 +1,11 @@
 # ClaudeCode 引き継ぎメモ
 
+## 最新更新 (2026-07-12, Codex: シリーズ講座MVP)
+
+SeriesPlan/EpisodePlan、カリキュラム一括生成・編集・並べ替え・承認画面(`/series`)を追加。
+承認済みEpisodeからTopic/VideoProjectを冪等作成し、シリーズ全体目標・過去回・新規概念・
+未説明概念を自動注入した台本生成をCeleryへ投入する。制作開始後の全体再生成は拒否する。
+
 ## 最新更新 (2026-07-12, Codex)
 
 Phase 1の運用安定化はcommit `ae00d19`で完了。Phase 2の長尺・台本自由度対応を引き継ぎ、

@@ -17,6 +17,7 @@ from app.schemas.script_content import ScriptContent
 from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
 from app.services.scripts.duration import duration_within_range, estimate_duration_seconds
+from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
@@ -217,6 +218,7 @@ async def generate_script(
 
     evidence_list = session.query(Evidence).filter(Evidence.topic_id == topic_id).all()
     system_prompt, user_prompt = _build_prompts(topic, evidence_list, production_settings)
+    system_prompt += build_series_script_context(session, topic_id)
     idempotency_key = build_idempotency_key(topic_id, PROMPT_VERSION, settings_checksum)
 
     async def _do_generate(job_run: JobRun) -> Script:

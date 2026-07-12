@@ -190,3 +190,13 @@ Ollama / LM Studio / vLLM が共通で話せる OpenAI互換 Chat Completions AP
 LLM生成直後の推定は音声化対象のsectionだけを日本語300文字/分で計算し、範囲外なら最大2回修復する。
 修復も通常のLLM gatewayを通すためUsageRecord・予算予約・キャッシュの対象になる。Evidence IDが
 増減する修復は根拠の欠落・捏造を避けるため破棄し、上限後も範囲外なら警告を残してベストエフォートで保存する。
+
+## D-023: シリーズは全台本ではなく全Episode Planを先に固定する(2026-07-12)
+
+講座シリーズでは、最初に全話の完成台本を生成せず、SeriesPlanと全Episode Planを生成・編集・
+人間承認する。その後、各話の詳細台本を順番に生成する。これにより途中修正の再生成コストを抑え、
+過去回の説明済み概念、今回の新規概念、未説明概念を各台本の制約として利用できる。
+
+Episodeから作るTopicは`series:{series_id}:episode:{episode_id}`を自然キーにし、再操作でも重複しない。
+制作開始済みEpisodeが1件でもあれば全体再生成を拒否し、既存動画との学習順序をfail-closedで保護する。
+Episode編集・並べ替え後はシリーズをdraftへ戻し、再承認を要求する。

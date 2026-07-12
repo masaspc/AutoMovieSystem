@@ -68,6 +68,9 @@
 - [x] 制作設定・台本編集UI: 企画詳細で尺/構成/トーン/話速を保存して生成、動画詳細で
       希望尺と推定尺を表示、素材生成前のセクション更新/追加/削除/並べ替え/AI部分再生成、
       VOICEVOX speedScale・Fake TTS・Generic Command `{speed}`への実話速反映
+- [x] シリーズ講座MVP: SeriesPlan/EpisodePlan、全体カリキュラムLLM生成、Episode編集・
+      並べ替え・承認、EpisodeからTopic/VideoProject/台本生成、過去回・新規概念・
+      未説明概念を台本プロンプトへ自動注入、制作開始後のカリキュラム固定
 
 ## 未解決事項
 

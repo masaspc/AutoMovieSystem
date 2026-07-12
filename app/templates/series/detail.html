@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, task_banner %}
+{% block title %}{{ series.name }} | AutoMovie{% endblock %}
+{% block content %}
+{{ task_banner(task_id, task_label, "/series/" ~ series.id) }}
+<div class="page-header"><div><h2>{{ series.name }}</h2><p class="page-desc">{{ series.target_audience }} → {{ series.final_goal }}</p></div><div class="actions">{{ status_badge(series.status) }}<form class="inline" method="post" action="/series/{{ series.id }}/generate"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button type="submit"{{ ' disabled' if task_id else '' }}>カリキュラム生成</button></form>{% if episodes and series.status != 'approved' %}<form class="inline" method="post" action="/series/{{ series.id }}/approve"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button type="submit" class="btn-secondary">全体を承認</button></form>{% endif %}</div></div>
+
+<div class="card"><h3 class="card-title">全体方針</h3><table class="kv-table"><tr><th>開始時の知識</th><td>{{ series.starting_knowledge }}</td></tr><tr><th>最終目標</th><td>{{ series.final_goal }}</td></tr><tr><th>技術・環境</th><td>{{ series.technology_version }} / {{ series.development_environment }}</td></tr><tr><th>方向性</th><td>{{ series.series_prompt or '(未指定)' }}</td></tr><tr><th>共通ルール</th><td>{{ series.shared_rules or '(未指定)' }}</td></tr></table></div>
+
+{% for episode in episodes %}
+<div class="card">
+  <div class="page-header" style="margin-bottom: 12px;"><div><h3 class="card-title" style="margin:0;">第{{ episode.position }}回 {{ episode.title }}</h3><p class="muted">{{ episode.summary }}</p></div><div>{{ status_badge(episode.status) }}</div></div>
+  {% if not episode.topic_id %}
+  <form method="post" action="/series/{{ series.id }}/episodes/{{ episode.id }}/update">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="field"><label>タイトル</label><input type="text" name="title" value="{{ episode.title }}" maxlength="255" required /></div>
+    <div class="field"><label>概要</label><textarea name="summary" rows="2" maxlength="5000" required>{{ episode.summary }}</textarea></div>
+    <div class="form-row"><div class="field" style="flex:1;"><label>学習目標（カンマ区切り）</label><input type="text" name="learning_objectives" value="{{ episode.learning_objectives | join(', ') }}" /></div><div class="field"><label>目標尺（秒）</label><input type="number" name="target_duration_seconds" min="30" max="3600" value="{{ episode.target_duration_seconds }}" required /></div></div>
+    <div class="field"><label>新しく教える概念</label><input type="text" name="new_concepts" value="{{ episode.new_concepts | join(', ') }}" /></div>
+    <div class="field"><label>復習する概念</label><input type="text" name="review_concepts" value="{{ episode.review_concepts | join(', ') }}" /></div>
+    <div class="field"><label>まだ扱わない概念</label><input type="text" name="excluded_concepts" value="{{ episode.excluded_concepts | join(', ') }}" /></div>
+    <div class="field"><label>デモ</label><textarea name="demo_outline" rows="2">{{ episode.demo_outline }}</textarea></div>
+    <div class="field"><label>演習</label><textarea name="exercise_outline" rows="2">{{ episode.exercise_outline }}</textarea></div>
+    <div class="field"><label>次回への接続</label><textarea name="next_episode_bridge" rows="2">{{ episode.next_episode_bridge }}</textarea></div>
+    <div class="actions"><button type="submit" class="btn-sm">Episodeを保存</button></div>
+  </form>
+  <div class="actions" style="margin-top:8px;"><form class="inline" method="post" action="/series/{{ series.id }}/episodes/{{ episode.id }}/move"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="direction" value="up" /><button class="btn-secondary btn-sm"{{ ' disabled' if loop.first else '' }}>↑</button></form><form class="inline" method="post" action="/series/{{ series.id }}/episodes/{{ episode.id }}/move"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="direction" value="down" /><button class="btn-secondary btn-sm"{{ ' disabled' if loop.last else '' }}>↓</button></form>{% if series.status in ['approved','active'] %}<form class="inline" method="post" action="/series/{{ series.id }}/episodes/{{ episode.id }}/start"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button type="submit">この回の制作を開始</button></form>{% endif %}</div>
+  {% else %}<p><a href="/topics/{{ episode.topic_id }}">作成済み企画を開く</a></p>{% endif %}
+</div>
+{% else %}<div class="card"><div class="empty">「カリキュラム生成」で全体構成を作成してください</div></div>{% endfor %}
+{% endblock %}
