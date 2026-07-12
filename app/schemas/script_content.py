@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 CharacterId = Literal["zundamon", "metan", "tsumugi"]
 CharacterEmotion = Literal["neutral", "happy", "serious", "surprised"]
@@ -41,6 +41,21 @@ class ScriptSection(BaseModel):
     quiz_question: str = Field(default="", max_length=500)
     quiz_options: list[str] = Field(default_factory=list, max_length=4)
     quiz_answer: str = Field(default="", max_length=500)
+
+    @field_validator("emphasis_words", mode="before")
+    @classmethod
+    def _normalize_emphasis_words(cls, value: object) -> object:
+        """LLMの軽微な件数超過を、台本全体の失敗にせず安全に補正する。"""
+        if not isinstance(value, list):
+            return value
+        normalized: list[str] = []
+        for item in value:
+            word = str(item).strip()
+            if word and word not in normalized:
+                normalized.append(word)
+            if len(normalized) == 5:
+                break
+        return normalized
 
 
 class ScriptContent(BaseModel):
