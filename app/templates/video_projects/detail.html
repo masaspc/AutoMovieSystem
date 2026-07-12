@@ -184,18 +184,23 @@
   <div>
     <div class="card">
       <h3 class="card-title">承認・却下</h3>
+      {% if project.status in ["REJECTED", "REVIEW_FAILED", "UPLOAD_READY"] %}
       {% if approval %}
       <p style="margin: 0;">
         {{ status_badge(approval.decision) }}
         <span class="muted">決裁者: {{ approval.decided_by }}</span>
       </p>
-      {% if project.status in ["REJECTED", "UPLOAD_READY"] %}
+      {% endif %}
       <form method="post" action="/video-projects/{{ project.id }}/rebuild-from-script" style="margin-top: 12px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button type="submit">台本から作り直す</button>
       </form>
       <p class="muted" style="margin-bottom: 0;">現在の成果物と承認履歴は残し、新しい世代として再生成します。</p>
-      {% endif %}
+      {% elif approval %}
+      <p style="margin: 0;">
+        {{ status_badge(approval.decision) }}
+        <span class="muted">決裁者: {{ approval.decided_by }}</span>
+      </p>
       {% else %}
       <div class="actions">
         <form class="inline" method="post" action="/video-projects/{{ project.id }}/approve">

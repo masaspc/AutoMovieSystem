@@ -15,7 +15,7 @@ from app.services.state_machine import transition
 
 logger = get_logger(__name__)
 
-REBUILDABLE_STATUSES = {"REJECTED", "UPLOAD_READY"}
+REBUILDABLE_STATUSES = {"REJECTED", "REVIEW_FAILED", "UPLOAD_READY"}
 
 
 class VideoProjectNotFoundError(ValueError):
@@ -78,7 +78,9 @@ def rebuild_from_script(session: Session, *, video_project_id: str) -> VideoProj
     """却下済み・承認済みProjectを残し、新世代を台本生成直前から開始する。"""
     source = _get_video_project(session, video_project_id)
     if source.status not in REBUILDABLE_STATUSES:
-        raise ValueError("却下済み、またはアップロード前の承認済み動画だけ作り直せます")
+        raise ValueError(
+            "レビュー不合格、却下済み、またはアップロード前の承認済み動画だけ作り直せます"
+        )
     latest_generation = (
         session.query(func.max(VideoProject.generation))
         .filter(VideoProject.topic_id == source.topic_id)

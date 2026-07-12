@@ -102,6 +102,16 @@ def test_approved_upload_ready_project_can_rebuild_from_script(db_session: Sessi
     assert replacement.status == "RESEARCH_READY"
 
 
+def test_review_failed_project_can_rebuild_from_script(db_session: Session) -> None:
+    source = _make_project(db_session, status="REVIEW_FAILED")
+
+    replacement = approval.rebuild_from_script(db_session, video_project_id=source.id)
+
+    assert source.status == "REVIEW_FAILED"
+    assert replacement.generation == 2
+    assert replacement.status == "RESEARCH_READY"
+
+
 def test_approve_from_invalid_state_raises_and_creates_no_approval(db_session: Session) -> None:
     project = _make_project(db_session, status="VIDEO_RENDERED")
 
@@ -244,6 +254,19 @@ def test_web_approved_project_still_shows_rebuild_button(
 ) -> None:
     project = _make_project(db_session)
     approval.approve(db_session, video_project_id=project.id, decided_by="reviewer")
+    db_session.commit()
+
+    detail_page = client.get(f"/video-projects/{project.id}")
+    review_page = client.get(f"/video-projects/{project.id}/review")
+
+    assert "台本から作り直す" in detail_page.text
+    assert "台本から作り直す" in review_page.text
+
+
+def test_web_review_failed_project_shows_rebuild_button(
+    client: TestClient, db_session: Session
+) -> None:
+    project = _make_project(db_session, status="REVIEW_FAILED")
     db_session.commit()
 
     detail_page = client.get(f"/video-projects/{project.id}")
