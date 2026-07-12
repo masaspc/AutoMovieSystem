@@ -24,6 +24,64 @@
 <div class="flash flash-warning">AI予算の消費が80%を超えています。/usage で内訳を確認してください。</div>
 {% endif %}
 
+<div class="card">
+  <h3 class="card-title">📋 今日の運用</h3>
+  {% if not awaiting_approval and not ready_to_upload and not failed_projects %}
+  <div class="empty">対応が必要な動画はありません。企画から「⚡ 一括制作」で次の動画を仕込みましょう。</div>
+  {% endif %}
+
+  {% if awaiting_approval %}
+  <h4 style="margin: 4px 0 8px;">✅ 承認待ち({{ awaiting_approval | length }}件)— 内容を確認して承認するとアップロード可能になります</h4>
+  <div class="table-wrap">
+    <table>
+      <tr><th>タイトル</th><th style="width: 220px;">操作</th></tr>
+      {% for project in awaiting_approval %}
+      <tr>
+        <td><a href="/video-projects/{{ project.id }}">{{ topics_by_id.get(project.topic_id, project.id) }}</a></td>
+        <td><a href="/video-projects/{{ project.id }}/review">確認して承認 →</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if ready_to_upload %}
+  <h4 style="margin: 16px 0 8px;">🚀 アップロード可({{ ready_to_upload | length }}件)</h4>
+  <div class="table-wrap">
+    <table>
+      <tr><th>タイトル</th><th style="width: 220px;">操作</th></tr>
+      {% for project in ready_to_upload %}
+      <tr>
+        <td><a href="/video-projects/{{ project.id }}">{{ topics_by_id.get(project.topic_id, project.id) }}</a></td>
+        <td>
+          <form class="inline" method="post" action="/video-projects/{{ project.id }}/pipeline/upload">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button type="submit" class="btn-sm">アップロード</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if failed_projects %}
+  <h4 style="margin: 16px 0 8px;">⚠ 失敗中({{ failed_projects | length }}件)— 詳細から再実行できます</h4>
+  <div class="table-wrap">
+    <table>
+      <tr><th>タイトル</th><th>状態</th><th style="width: 160px;">操作</th></tr>
+      {% for project in failed_projects %}
+      <tr>
+        <td><a href="/video-projects/{{ project.id }}">{{ topics_by_id.get(project.topic_id, project.id) }}</a></td>
+        <td>{{ status_badge(project.status) }}</td>
+        <td><a href="/video-projects/{{ project.id }}">詳細へ →</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+
 <div class="stat-grid">
   <div class="stat-card">
     <div class="stat-label">企画(Topic)</div>

@@ -29,6 +29,7 @@ from app.services.orchestration import (
 from app.services.topics import importer
 from app.services.topics.scoring import TopicNotFoundError, score_topic
 from app.web.common import require_csrf, with_message
+from app.workers.tasks.production import produce_video_task
 from app.workers.tasks.scripts import generate_script_task
 
 logger = get_logger(__name__)
@@ -52,6 +53,8 @@ SCRIPT_TEMPLATES = (
     ("story", "ストーリー"),
     ("dialogue", "掛け合い"),
     ("shorts", "Shorts"),
+    ("trivia", "雑学"),
+    ("news_commentary", "ニュース解説"),
 )
 
 
@@ -345,6 +348,25 @@ def generate_script_route(
     # 画面へ反映される(台本のVideoProjectへの紐付けはタスク側で行う)。
     task = generate_script_task.delay(topic_id)
     redirect_url = f"/topics/{topic_id}?task_id={task.id}&task_label=台本生成"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/topics/{topic_id}/produce")
+def produce_video_route(
+    topic_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
+) -> RedirectResponse:
+    """1クリック一括制作: 台本→素材→音声→レンダリング→自動レビューまで実行する。
+
+    毎日投稿の運用向け(承認・アップロードは人間のまま=fail-closed維持)。
+    冪等なので失敗後に再度押すと完了済み工程をスキップして途中から再開する。
+    """
+    require_csrf(request, csrf_token)
+    topic = db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail=f"Topic not found: {topic_id}")
+
+    task = produce_video_task.delay(topic_id)
+    redirect_url = f"/topics/{topic_id}?task_id={task.id}&task_label=一括制作"
     return RedirectResponse(url=redirect_url, status_code=303)
 
 

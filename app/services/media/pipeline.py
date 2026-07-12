@@ -38,7 +38,6 @@ from app.services.state_machine import transition
 
 logger = get_logger(__name__)
 
-DEFAULT_CHANNEL_NAME = "AutoMovieSystem"
 DEFAULT_VOICE = "default"
 
 
@@ -487,20 +486,41 @@ def _compute_render_input_checksum(
     return hasher.hexdigest()
 
 
+def _resolve_channel_name(session: Session, project: VideoProject) -> str:
+    """エンドカード等に表示するチャンネル名をDBから解決する。
+
+    システム名(AutoMovieSystem)を視聴者向けの動画に出さないため、
+    Topic経由で実チャンネル名を引く。見つからない場合は空文字(表示なし)。
+    """
+    from app.models.channel import Channel
+    from app.models.topic import Topic
+
+    topic = session.get(Topic, project.topic_id)
+    if topic is None:
+        return ""
+    channel = session.get(Channel, topic.channel_id)
+    return channel.name if channel is not None else ""
+
+
 def render_video(
     session: Session,
     *,
     video_project_id: str,
-    channel_name: str = DEFAULT_CHANNEL_NAME,
+    channel_name: str | None = None,
     title: str | None = None,
 ) -> VideoProject:
     """字幕生成+FFmpegレンダリング+ffprobe検証を行う(冪等)。
 
     `ASSETS_READY` -> `VIDEO_RENDERED`。FFmpeg失敗またはprobe検査でblocking findingsが
     ある場合は `RENDER_FAILED` へ遷移し `PipelineRenderError` を送出する。
+
+    channel_name未指定時はDBの実チャンネル名を使う(視聴者向けの動画へ
+    システム名を出さない)。
     """
     project = _get_video_project(session, video_project_id)
     script = _get_script(session, project)
+    if channel_name is None:
+        channel_name = _resolve_channel_name(session, project)
 
     settings = get_settings()
     dialogue_enabled = dialogue.dialogue_script_enabled(settings)

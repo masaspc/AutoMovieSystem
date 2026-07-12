@@ -10,9 +10,13 @@
   </div>
   <div class="actions">
     {{ status_badge(topic.status) }}
+    <form class="inline" method="post" action="/topics/{{ topic.id }}/produce">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit"{{ ' disabled' if task_id else '' }}>⚡ 一括制作(レビューまで)</button>
+    </form>
     <form class="inline" method="post" action="/topics/{{ topic.id }}/generate-script">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <button type="submit"{{ ' disabled' if task_id else '' }}>台本生成</button>
+      <button type="submit" class="btn-secondary"{{ ' disabled' if task_id else '' }}>台本生成のみ</button>
     </form>
     <form class="inline" method="post" action="/topics/{{ topic.id }}/create-video-project">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

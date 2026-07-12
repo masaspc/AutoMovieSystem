@@ -20,7 +20,15 @@ CHARS_PER_MINUTE = 300
 PresetName = Literal["short", "standard_3min", "standard_5min", "standard_8min", "custom"]
 VideoFormat = Literal["short", "standard", "custom"]
 ScriptTemplate = Literal[
-    "explainer", "ranking", "problem_solution", "comparison", "story", "dialogue", "shorts"
+    "explainer",
+    "ranking",
+    "problem_solution",
+    "comparison",
+    "story",
+    "dialogue",
+    "shorts",
+    "trivia",
+    "news_commentary",
 ]
 
 # preset -> video_format の導出テーブル。

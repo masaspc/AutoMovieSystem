@@ -287,12 +287,19 @@ async def run_production_pipeline(
     *,
     topic_id: str,
     providers: PipelineProviders,
+    progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> ProductionResult:
     """制作工程(スコアリング→台本→アセット→音声→レンダリング→自動レビュー)を実行する。
 
     承認・アップロード以降は含まない(人間承認はfail-closedのまま残す)。冪等。
     `run_full_pipeline` と量産バッチ(app/services/growth)の共通基盤。
+    progress_callback(stage, current, total) は画面の進捗表示用(任意)。
     """
+
+    def _progress(stage: str, current: int) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, current, 5)
+
     skipped_steps: list[str] = []
 
     # 1. スコアリング(冪等: JobRun idempotency_key="score_topic:{topic_id}")
@@ -309,6 +316,7 @@ async def run_production_pipeline(
     session.flush()
 
     # 3. 台本生成(冪等) -> SCRIPT_GENERATED -> 検査通過で SCRIPT_REVIEWED
+    _progress("AIが台本を生成しています", 1)
     production_settings = (
         ProductionSettings.model_validate(project.production_settings)
         if project.production_settings
@@ -327,14 +335,17 @@ async def run_production_pipeline(
 
     # 4. アセット準備 + TTS音声合成 + FFmpegレンダリング(いずれも冪等)
     if project.status in _MEDIA_PIPELINE_ENTRY_STATUSES:
+        _progress("背景・サムネイルを生成しています", 2)
         prepare_assets(session, video_project_id=project.id)
         session.commit()
 
         # target_duration_seconds(尺の妥当性判定に使う)の算出はsynthesize_audio本体で
         # 行われる(呼び出し元ごとの重複実装を避けるため)。
+        _progress("音声を合成しています", 3)
         await synthesize_audio(session, video_project_id=project.id, provider=providers.tts)
         session.commit()
 
+        _progress("動画をレンダリングしています", 4)
         render_video(session, video_project_id=project.id)
         session.commit()
     else:
@@ -342,6 +353,7 @@ async def run_production_pipeline(
 
     # 5. 自動レビュー(machine+content。冪等: checksumベースのidempotency_key)
     if project.status == "VIDEO_RENDERED":
+        _progress("自動レビューを実行しています", 5)
         await run_automated_review(session, video_project_id=project.id, provider=providers.llm)
         session.commit()
     else:

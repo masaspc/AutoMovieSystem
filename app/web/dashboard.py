@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from app.core.csrf import get_or_issue_csrf_token, set_csrf_cookie
 from app.core.timeutil import utcnow_naive
 from app.db.session import get_db
 from app.models.budget_ledger import BudgetLedger
@@ -55,6 +56,37 @@ def dashboard(request: Request, db: DbSession) -> HTMLResponse:
     topic_counts = _status_counts(db, Topic.status)
     project_counts = _status_counts(db, VideoProject.status)
 
+    # 「今日の運用」キュー: 毎日投稿でオペレーターが今すぐ行うべき操作を1画面に集約する。
+    topics_by_id = {t.id: t.title for t in db.query(Topic).all()}
+    awaiting_approval = (
+        db.query(VideoProject)
+        .filter(VideoProject.status == "AUTOMATED_REVIEW_PASSED")
+        .order_by(VideoProject.updated_at.asc())
+        .limit(10)
+        .all()
+    )
+    ready_to_upload = (
+        db.query(VideoProject)
+        .filter(VideoProject.status == "UPLOAD_READY")
+        .order_by(VideoProject.updated_at.asc())
+        .limit(10)
+        .all()
+    )
+    failed_states = (
+        "SCRIPT_FAILED",
+        "ASSET_FAILED",
+        "RENDER_FAILED",
+        "REVIEW_FAILED",
+        "UPLOAD_FAILED",
+    )
+    failed_projects = (
+        db.query(VideoProject)
+        .filter(VideoProject.status.in_(failed_states))
+        .order_by(VideoProject.updated_at.desc())
+        .limit(10)
+        .all()
+    )
+
     latest_publication = db.query(Publication).order_by(Publication.created_at.desc()).first()
     latest_insight = db.query(Insight).order_by(Insight.created_at.desc()).first()
 
@@ -89,12 +121,18 @@ def dashboard(request: Request, db: DbSession) -> HTMLResponse:
     daily_ratio = _budget_ratio(daily_ledger)
     monthly_ratio = _budget_ratio(monthly_ledger)
 
+    csrf_token = get_or_issue_csrf_token(request)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "media_tools": check_media_tools(),
+            "topics_by_id": topics_by_id,
+            "awaiting_approval": awaiting_approval,
+            "ready_to_upload": ready_to_upload,
+            "failed_projects": failed_projects,
+            "csrf_token": csrf_token,
             "topic_counts": topic_counts,
             "project_counts": project_counts,
             "latest_publication": latest_publication,
@@ -106,3 +144,5 @@ def dashboard(request: Request, db: DbSession) -> HTMLResponse:
             "budget_warning_threshold": BUDGET_WARNING_THRESHOLD,
         },
     )
+    set_csrf_cookie(response, csrf_token)
+    return response

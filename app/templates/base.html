@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}AutoMovie 管理画面{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='admin.css') }}?v={{ asset_version | default('0') }}" />
+  <script>
+    // テーマは描画前に適用する(FOUC防止)。保存値がなければOS設定に追従する。
+    (function () {
+      var saved = localStorage.getItem('amx-theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
   {% block head %}{% endblock %}
   <script>
@@ -63,7 +71,13 @@
         </ul>
       </div>
     </nav>
-    <div class="sidebar-footer">private / fail-closed 運用</div>
+    <div class="sidebar-footer">
+      <button type="button" id="theme-toggle" class="theme-toggle"
+              onclick="var t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('amx-theme', t);">
+        🌓 ライト/ダーク切替
+      </button>
+      <div>private / fail-closed 運用</div>
+    </div>
   </aside>
   <main class="content">
     {% if request.query_params.get('error') %}
