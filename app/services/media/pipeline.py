@@ -28,6 +28,7 @@ from app.models.asset import (
 from app.models.job_run import JobRun
 from app.models.script import Script
 from app.models.video_project import VideoProject
+from app.providers.background.factory import get_background_provider
 from app.providers.tts.base import TTSProvider
 from app.schemas.production_settings import ProductionSettings
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
@@ -148,11 +149,12 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
     idempotency_key = build_prepare_assets_idempotency_key(video_project_id)
 
     def _do_prepare() -> VideoProject:
+        background_provider = get_background_provider()
         sections = list((script.body or {}).get("sections") or [])
         relative_path = f"videos/{video_project_id}/background.png"
         output_path = resolve_generated_path(relative_path)
         first_section = sections[0] if sections else {"heading": script.title}
-        visuals.generate_section_visual(first_section, output_path)
+        background_provider.generate(first_section, output_path)
         checksum = renderer.compute_file_checksum(output_path)
 
         _upsert_asset(
@@ -169,7 +171,7 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
             section_path = resolve_generated_path(
                 f"videos/{video_project_id}/backgrounds/section_{index:02d}.png"
             )
-            visuals.generate_section_visual(section, section_path)
+            background_provider.generate(section, section_path)
             _upsert_asset(
                 session,
                 video_project_id=video_project_id,
@@ -439,7 +441,8 @@ def _fetch_section_backgrounds(
 # v2: キャラ両端配置+右側反転+上下移動廃止、字幕焼き込みのデフォルトOFF化、
 #     scene concatの尺クランプ修正。
 # v3: BGMダッキングミックス+セクション切替SE(Phase A: 音響)。
-RENDER_SPEC_VERSION = 3
+# v4: キーワードテロップ、グラフ、コード色分け、背景プロバイダー抽象化。
+RENDER_SPEC_VERSION = 4
 
 
 def _compute_render_input_checksum(

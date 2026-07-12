@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from app.providers.background.fake import FakeBackgroundProvider
+from app.providers.background.pillow import PillowBackgroundProvider
 from app.providers.youtube.base import AudienceRetentionPoint
 from app.services.analytics.retention import correlate_retention_dips
 from app.services.media.visuals import (
@@ -47,6 +49,14 @@ def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:
     ]
     for index, section in enumerate(sections):
         path = generate_section_visual(section, tmp_path / f"{index}.png")
+        with Image.open(path) as image:
+            assert image.size == (1920, 1080)
+
+
+def test_background_providers_follow_the_same_contract(tmp_path: Path) -> None:
+    section = {"heading": "背景", "visual_type": "key_point"}
+    for index, provider in enumerate((PillowBackgroundProvider(), FakeBackgroundProvider())):
+        path = provider.generate(section, tmp_path / f"provider-{index}.png")
         with Image.open(path) as image:
             assert image.size == (1920, 1080)
 
