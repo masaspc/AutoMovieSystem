@@ -78,9 +78,11 @@ def _get_script(session: Session, project: VideoProject) -> Script:
 # prepare_assets: 背景画像生成 + Asset登録。SCRIPT_REVIEWED -> ASSETS_READY。
 # ---------------------------------------------------------------------------
 
+ASSET_SPEC_VERSION = 2
+
 
 def build_prepare_assets_idempotency_key(video_project_id: str) -> str:
-    return f"prepare_assets:{video_project_id}"
+    return f"prepare_assets:{video_project_id}:v{ASSET_SPEC_VERSION}"
 
 
 def _upsert_asset(
@@ -442,7 +444,8 @@ def _fetch_section_backgrounds(
 #     scene concatの尺クランプ修正。
 # v3: BGMダッキングミックス+セクション切替SE(Phase A: 音響)。
 # v4: キーワードテロップ、グラフ、コード色分け、背景プロバイダー抽象化。
-RENDER_SPEC_VERSION = 4
+# v5: 教材背景のピクセル幅フィットとコード抽出。
+RENDER_SPEC_VERSION = 5
 
 
 def _compute_render_input_checksum(

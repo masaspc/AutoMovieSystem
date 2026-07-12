@@ -12,16 +12,36 @@ from sqlalchemy.orm import Session
 from app.models.script import Script
 from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
-from app.schemas.content_review import ContentReviewResult
+from app.schemas.content_review import ContentReviewFinding, ContentReviewResult
 from app.services.llm_gateway import call_llm
 from app.services.media.dialogue import extract_speech_lines
-from app.services.reviews.findings import SEVERITY_WARNING, Finding
+from app.services.reviews.findings import SEVERITY_BLOCKING, SEVERITY_WARNING, Finding
 from app.services.scripts.inspector import inspect_script_with_history
 
-PROMPT_VERSION = "content_review_v1"
+PROMPT_VERSION = "content_review_v2"
 OPERATION = "review_content"
 # architecture.md モデルルーティングポリシー: 公開前最終判定 = high。
 MODEL_POLICY = "high"
+
+_BLOCKING_TECHNICAL_CODES = {
+    "FACTUAL_ERROR",
+    "MISLEADING_TECHNICAL_CLAIM",
+    "TECHNICAL_ERROR",
+}
+
+
+def _normalize_llm_finding(item: ContentReviewFinding) -> Finding:
+    """初心者教材の技術的誤りは、LLMのseverityが甘くても公開を止める。"""
+    code = item.code
+    severity = item.severity
+    if code.upper() in _BLOCKING_TECHNICAL_CODES:
+        severity = SEVERITY_BLOCKING
+    return Finding(
+        code,
+        severity,
+        item.message,
+        item.detail,
+    )
 
 
 def build_idempotency_key(video_project_id: str, checksum: str) -> str:
@@ -47,6 +67,8 @@ def _build_prompts(script: Script) -> tuple[str, str]:
         "あなたはYouTube動画公開前の最終コンテンツレビュアーです。"
         "タイトル誠実性・誤認表現・スパム性・AI生成物である旨の開示要否・"
         "子ども向けコンテンツ該当性・著作権懸念の観点で台本を検査し、"
+        "コードの実行結果やプログラミング言語の仕様も検証してください。技術的に誤った説明は"
+        "初心者の学習を損なうためseverityをblockingにしてください。"
         "問題があれば findings に構造化して報告してください。"
         "問題がなければ findings は空配列、passed は true にしてください。"
     )
@@ -96,9 +118,6 @@ async def inspect_content(
         job_run_id=job_run_id,
     )
     content_result = ContentReviewResult.model_validate(result.data)
-    findings.extend(
-        Finding(item.code, item.severity, item.message, item.detail)
-        for item in content_result.findings
-    )
+    findings.extend(_normalize_llm_finding(item) for item in content_result.findings)
 
     return findings

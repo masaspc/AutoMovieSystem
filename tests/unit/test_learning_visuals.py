@@ -10,10 +10,26 @@ from app.providers.background.pillow import PillowBackgroundProvider
 from app.providers.youtube.base import AudienceRetentionPoint
 from app.services.analytics.retention import correlate_retention_dips
 from app.services.media.visuals import (
+    _code_from_section,
     build_background_frames,
     generate_section_visual,
     write_scene_manifest,
 )
+
+
+def test_code_visual_extracts_code_examples_instead_of_drawing_full_instruction() -> None:
+    code = _code_from_section(
+        {
+            "code": "",
+            "visual_instruction": (
+                "VS Codeに「print(20 + '30')」を表示し、"
+                "並列に「print(20 + 30)」を表示する"
+            ),
+        }
+    )
+
+    assert code == "print(20 + '30')\nprint(20 + 30)"
+    assert "VS Code" not in code
 
 
 def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import keyword
 import re
-import textwrap
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -33,16 +32,93 @@ def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFon
     return ImageFont.load_default()
 
 
-def _wrapped(text: str, width: int) -> list[str]:
-    return textwrap.wrap(text.strip(), width=width) or [""]
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    max_width: int,
+    preferred_size: int,
+    minimum_size: int = 20,
+    bold: bool = False,
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """指定幅へ収まるまでフォントを縮小する。"""
+    for size in range(preferred_size, minimum_size - 1, -2):
+        font = _font(size, bold=bold)
+        if draw.textlength(text, font=font) <= max_width:
+            return font
+    return _font(minimum_size, bold=bold)
+
+
+def _ellipsize(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_width: int,
+) -> str:
+    """1行テキストを必ず指定幅内へ収める。"""
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    suffix = "…"
+    shortened = text
+    while shortened and draw.textlength(shortened + suffix, font=font) > max_width:
+        shortened = shortened[:-1]
+    return shortened + suffix
+
+
+def _wrap_pixels(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    *,
+    max_width: int,
+    max_lines: int,
+) -> list[str]:
+    """日本語を含む文章を文字幅ベースで折り返し、最終行を省略表示する。"""
+    remaining = text.strip()
+    lines: list[str] = []
+    while remaining and len(lines) < max_lines:
+        length = 1
+        while length <= len(remaining) and draw.textlength(
+            remaining[:length], font=font
+        ) <= max_width:
+            length += 1
+        take = max(1, length - 1)
+        line = remaining[:take]
+        remaining = remaining[take:].lstrip()
+        if len(lines) == max_lines - 1 and remaining:
+            line = _ellipsize(draw, line + remaining, font, max_width)
+            remaining = ""
+        lines.append(line)
+    return lines or [""]
 
 
 def _draw_header(draw: ImageDraw.ImageDraw, title: str, accent: tuple[int, int, int]) -> None:
     draw.rounded_rectangle((90, 65, 1830, 190), radius=28, fill=(*accent, 235))
-    draw.text((135, 93), title[:44], fill="white", font=_font(48, bold=True))
+    font = _fit_font(draw, title, max_width=1650, preferred_size=48, bold=True)
+    draw.text((135, 93), _ellipsize(draw, title, font, 1650), fill="white", font=font)
 
 
-def _draw_code(draw: ImageDraw.ImageDraw, section: dict) -> None:
+def _code_from_section(section: dict) -> str:
+    code = str(section.get("code") or "").strip()
+    if code:
+        return code
+    instruction = str(section.get("visual_instruction") or "")
+    candidates = re.findall(r"「([^」]+)」", instruction, flags=re.DOTALL)
+    code_candidates = [
+        candidate.strip()
+        for candidate in candidates
+        if re.search(r"(?:print|input|int|float|str|=|\(|\))", candidate)
+    ]
+    return "\n".join(code_candidates)
+
+
+def _draw_code(
+    draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]
+) -> None:
+    code = _code_from_section(section)
+    if not code:
+        _draw_bullets(draw, section, accent)
+        return
     draw.rounded_rectangle(
         (150, 235, 1770, 875),
         radius=24,
@@ -50,22 +126,24 @@ def _draw_code(draw: ImageDraw.ImageDraw, section: dict) -> None:
         outline=(70, 78, 92),
         width=3,
     )
-    code = str(section.get("code") or section.get("visual_instruction") or "# コード例")
     highlights = {int(value) for value in section.get("highlight_lines") or []}
     for number, line in enumerate(code.splitlines()[:14], start=1):
         y = 280 + (number - 1) * 40
         if number in highlights:
             draw.rounded_rectangle((175, y - 5, 1735, y + 35), radius=8, fill=(45, 68, 48))
         draw.text((195, y), f"{number:>2}", fill=(112, 122, 140), font=_font(25))
-        _draw_python_line(draw, line[:78], 270, y)
+        _draw_python_line(draw, line, 270, y, max_width=1430)
 
 
 _CODE_TOKEN_RE = re.compile(r"(#[^\n]*|(?:\"[^\"]*\"|'[^']*')|\b\d+(?:\.\d+)?\b|\b[A-Za-z_]\w*\b)")
 
 
-def _draw_python_line(draw: ImageDraw.ImageDraw, line: str, x: int, y: int) -> None:
+def _draw_python_line(
+    draw: ImageDraw.ImageDraw, line: str, x: int, y: int, *, max_width: int
+) -> None:
     """標準的なPythonトークンを色分けして1行描画する。"""
-    font = _font(27)
+    font = _fit_font(draw, line, max_width=max_width, preferred_size=27, minimum_size=18)
+    line = _ellipsize(draw, line, font, max_width)
     cursor = float(x)
     last = 0
     for match in _CODE_TOKEN_RE.finditer(line):
@@ -93,18 +171,29 @@ def _draw_bullets(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, i
     bullets = section.get("visual_bullets") or [
         section.get("visual_instruction") or "要点を確認しましょう"
     ]
-    for index, bullet in enumerate(bullets[:5], start=1):
-        top = 255 + (index - 1) * 125
+    visible_bullets = bullets[:5]
+    slot_height = min(125, 630 // max(1, len(visible_bullets)))
+    for index, bullet in enumerate(visible_bullets, start=1):
+        top = 255 + (index - 1) * slot_height
+        bottom = top + slot_height - 18
         draw.rounded_rectangle(
-            (190, top, 1730, top + 92),
+            (190, top, 1730, bottom),
             radius=22,
             fill=(255, 255, 255, 28),
             outline=accent,
             width=3,
         )
-        draw.ellipse((225, top + 20, 275, top + 70), fill=accent)
-        draw.text((242, top + 27), str(index), fill="white", font=_font(23))
-        draw.text((310, top + 24), str(bullet)[:52], fill=(242, 245, 250), font=_font(34))
+        center_y = (top + bottom) // 2
+        draw.ellipse((225, center_y - 25, 275, center_y + 25), fill=accent)
+        draw.text((242, center_y - 18), str(index), fill="white", font=_font(23))
+        bullet_text = str(bullet)
+        font = _font(30)
+        lines = _wrap_pixels(draw, bullet_text, font, max_width=1360, max_lines=2)
+        line_height = 38
+        text_y = center_y - (len(lines) * line_height) // 2
+        for line in lines:
+            draw.text((310, text_y), line, fill=(242, 245, 250), font=font)
+            text_y += line_height
 
 
 def _draw_quiz(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]) -> None:
@@ -112,8 +201,9 @@ def _draw_quiz(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int,
         section.get("quiz_question") or section.get("visual_title") or "ここで確認問題です"
     )
     y = 260
-    for line in _wrapped(question, 28)[:3]:
-        draw.text((180, y), line, fill=(250, 250, 255), font=_font(42))
+    question_font = _font(42)
+    for line in _wrap_pixels(draw, question, question_font, max_width=1500, max_lines=3):
+        draw.text((180, y), line, fill=(250, 250, 255), font=question_font)
         y += 58
     for index, option in enumerate((section.get("quiz_options") or ["考えてみましょう"])[:4]):
         top = 470 + index * 105
@@ -124,11 +214,13 @@ def _draw_quiz(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int,
             outline=accent,
             width=2,
         )
+        option_text = f"{chr(65 + index)}. {str(option)}"
+        option_font = _fit_font(draw, option_text, max_width=1320, preferred_size=30)
         draw.text(
             (300, top + 17),
-            f"{chr(65 + index)}. {str(option)[:42]}",
+            _ellipsize(draw, option_text, option_font, 1320),
             fill="white",
-            font=_font(30),
+            font=option_font,
         )
 
 
@@ -193,7 +285,7 @@ def generate_section_visual(section: dict, output_path: Path) -> Path:
     _draw_header(draw, title, accent)
     visual_type = str(section.get("visual_type") or "dialogue")
     if visual_type == "code":
-        _draw_code(draw, section)
+        _draw_code(draw, section, accent)
     elif visual_type == "quiz":
         _draw_quiz(draw, section, accent)
     elif visual_type == "chart":

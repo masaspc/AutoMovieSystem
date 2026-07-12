@@ -9,7 +9,8 @@ from app.models.script import Script
 from app.models.topic import Topic
 from app.models.video_project import VideoProject
 from app.providers.llm.fake import DeterministicFakeLLMProvider
-from app.services.reviews.content import inspect_content
+from app.schemas.content_review import ContentReviewFinding
+from app.services.reviews.content import _normalize_llm_finding, inspect_content
 
 
 def _make_project_and_script(db_session: Session, *, narration: str) -> tuple[VideoProject, Script]:
@@ -102,3 +103,15 @@ def test_title_not_in_candidates_is_warning(db_session: Session) -> None:
     )
 
     assert any(f.code == "title_not_in_candidates" and f.severity == "warning" for f in findings)
+
+
+def test_misleading_technical_claim_is_always_blocking() -> None:
+    finding = _normalize_llm_finding(
+        ContentReviewFinding(
+            code="MISLEADING_TECHNICAL_CLAIM",
+            severity="medium",
+            message="Pythonの実行結果が誤っています",
+        )
+    )
+
+    assert finding.severity == "blocking"
