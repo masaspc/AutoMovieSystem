@@ -56,7 +56,9 @@ class GenericCommandTTSProvider:
         output_path: Path,
         idempotency_key: str,
         speed_scale: float = 1.0,
+        emotion: str = "neutral",
     ) -> TTSResult:
+        del emotion  # 外部CLIテンプレートは感情演技非対応(必要なら{emotion}追加を将来検討)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         args = substitute_placeholders(
             self._command_template,

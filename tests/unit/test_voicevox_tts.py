@@ -52,6 +52,61 @@ def test_voicevox_synthesizes_selected_character_to_wav(tmp_path: Path) -> None:
     assert mock_post.await_args_list[1].kwargs["json"]["speedScale"] == 1.25
 
 
+def test_voicevox_applies_emotion_acting_parameters(tmp_path: Path) -> None:
+    """emotionがピッチ・抑揚・話速の演技パラメータへ反映される(棒読み解消)。"""
+    settings = Settings(_env_file=None, VOICEVOX_BASE_URL="http://voicevox.test")  # type: ignore[call-arg]
+    provider = VoicevoxTTSProvider(settings)
+    mock_post = AsyncMock(
+        side_effect=[
+            _response(200, json={"speedScale": 1.0, "pitchScale": 0.0}),
+            _response(200, content=synthesize_wav_bytes("びっくり")),
+        ]
+    )
+
+    async def run() -> object:
+        with patch.object(httpx.AsyncClient, "post", new=mock_post):
+            return await provider.synthesize(
+                text="びっくり",
+                voice="zundamon",
+                output_path=tmp_path / "zundamon.wav",
+                idempotency_key="test",
+                speed_scale=1.0,
+                emotion="surprised",
+            )
+
+    asyncio.run(run())
+    query = mock_post.await_args_list[1].kwargs["json"]
+    assert query["pitchScale"] == pytest.approx(0.05)
+    assert query["intonationScale"] == pytest.approx(1.4)
+    assert query["speedScale"] == pytest.approx(1.06)
+
+
+def test_voicevox_neutral_emotion_keeps_default_parameters(tmp_path: Path) -> None:
+    settings = Settings(_env_file=None, VOICEVOX_BASE_URL="http://voicevox.test")  # type: ignore[call-arg]
+    provider = VoicevoxTTSProvider(settings)
+    mock_post = AsyncMock(
+        side_effect=[
+            _response(200, json={"speedScale": 1.0, "pitchScale": 0.0}),
+            _response(200, content=synthesize_wav_bytes("こんにちは")),
+        ]
+    )
+
+    async def run() -> object:
+        with patch.object(httpx.AsyncClient, "post", new=mock_post):
+            return await provider.synthesize(
+                text="こんにちは",
+                voice="zundamon",
+                output_path=tmp_path / "neutral.wav",
+                idempotency_key="test",
+            )
+
+    asyncio.run(run())
+    query = mock_post.await_args_list[1].kwargs["json"]
+    assert query["speedScale"] == pytest.approx(1.0)
+    assert query["pitchScale"] == pytest.approx(0.0)
+    assert "intonationScale" not in query
+
+
 def test_voicevox_rejects_unknown_character(tmp_path: Path) -> None:
     provider = VoicevoxTTSProvider(Settings(_env_file=None))  # type: ignore[call-arg]
 

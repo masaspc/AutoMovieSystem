@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,7 +41,8 @@ THUMBNAIL_HEIGHT = 720
 # に再生成される(prepare_assets自体の冪等キーは変えない)。
 # v2: テキスト主体デザインへ刷新(立ち絵廃止・自動フィットで見切れ解消・
 #     impact/split/minimalの3レイアウト)。
-THUMBNAIL_SPEC_VERSION = 2
+# v3: キーワード部分色強調(《》マーカー+数字の自動強調をアクセントイエローで描画)。
+THUMBNAIL_SPEC_VERSION = 3
 THUMBNAIL_CANDIDATE_COUNT = 3
 THUMBNAIL_ROLE_PREFIX = "thumbnail:candidate:"
 THUMBNAIL_ROLE_SELECTED = "thumbnail"
@@ -138,6 +140,40 @@ def _resolve_thumbnail_texts(body: dict) -> list[str]:
 # 自動フィットのテキストエンジン(見切れを構造的に不可能にする)
 # ---------------------------------------------------------------------------
 
+# キーワード強調色(YouTubeサムネイル定番の高視認イエロー)。
+_EMPHASIS_COLOR = (255, 233, 74)
+# LLMが《》で囲んだ語句を強調する。マーカーが無い場合は数字(+単位1文字)を自動強調。
+_MARKER_RE = re.compile(r"《([^》]*)》")
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?[%%万円分秒倍個回]?")
+
+
+def parse_emphasis(text: str) -> tuple[str, list[bool]]:
+    """《》マーカーを解釈し、(プレーン文字列, 文字ごとの強調フラグ) を返す。
+
+    マーカーが1つも無い場合は数字(単位1文字を含む)を自動で強調対象にする
+    (「9割が知らない」→「9割」が強調色になる)。
+    """
+    if _MARKER_RE.search(text):
+        plain_chars: list[str] = []
+        flags: list[bool] = []
+        emphasized = False
+        for char in text:
+            if char == "《":
+                emphasized = True
+                continue
+            if char == "》":
+                emphasized = False
+                continue
+            plain_chars.append(char)
+            flags.append(emphasized)
+        return "".join(plain_chars), flags
+
+    flags = [False] * len(text)
+    for match in _NUMBER_RE.finditer(text):
+        for index in range(match.start(), match.end()):
+            flags[index] = True
+    return text, flags
+
 
 def _wrap_by_width(
     draw: ImageDraw.ImageDraw,
@@ -232,9 +268,15 @@ def _draw_fitted_block(
     text_color: tuple[int, int, int],
     outline: tuple[int, int, int] = (0, 0, 0),
     highlight: tuple[int, int, int] | None = None,
+    emphasis_flags: list[bool] | None = None,
 ) -> None:
-    """折り返し済みテキストブロックを描画する。highlight指定時は行背景帯を敷く。"""
+    """折り返し済みテキストブロックを描画する。
+
+    highlight指定時は行背景帯を敷く。emphasis_flags(プレーン文字列に対する文字ごとの
+    強調フラグ)指定時は、該当部分だけ強調色(_EMPHASIS_COLOR)で描く。
+    """
     y = top
+    consumed = 0
     for line in fitted.lines:
         bbox = draw.textbbox((0, 0), line, font=fitted.font)
         line_width = int(bbox[2] - bbox[0])
@@ -245,7 +287,27 @@ def _draw_fitted_block(
                 (x - pad, y - 4, x + line_width + pad, y + fitted.line_height - 8),
                 fill=highlight,
             )
-        _draw_outlined_text(draw, (x, y), line, fitted.font, fill=text_color, outline=outline)
+        line_flags = (
+            emphasis_flags[consumed : consumed + len(line)]
+            if emphasis_flags is not None
+            else [False] * len(line)
+        )
+        if any(line_flags):
+            # 同一強調状態の連続区間(run)ごとに色を切り替えて描画する。
+            cursor = float(x)
+            run_start = 0
+            for index in range(1, len(line) + 1):
+                if index == len(line) or line_flags[index] != line_flags[run_start]:
+                    run = line[run_start:index]
+                    color = _EMPHASIS_COLOR if line_flags[run_start] else text_color
+                    _draw_outlined_text(
+                        draw, (round(cursor), y), run, fitted.font, fill=color, outline=outline
+                    )
+                    cursor += draw.textlength(run, font=fitted.font)
+                    run_start = index
+        else:
+            _draw_outlined_text(draw, (x, y), line, fitted.font, fill=text_color, outline=outline)
+        consumed += len(line)
         y += fitted.line_height
 
 
@@ -263,6 +325,7 @@ def _text_area(context: _SeriesContext) -> tuple[int, int]:
 def _render_impact(
     text: str,
     *,
+    emphasis_flags: list[bool],
     accent: tuple[int, int, int],
     secondary: tuple[int, int, int],
     text_color: tuple[int, int, int],
@@ -290,13 +353,21 @@ def _render_impact(
         max_lines=3,
     )
     block_top = top + max(0, (height - fitted.total_height) // 2)
-    _draw_fitted_block(draw, fitted, top=block_top, align="left", text_color=text_color)
+    _draw_fitted_block(
+        draw,
+        fitted,
+        top=block_top,
+        align="left",
+        text_color=text_color,
+        emphasis_flags=emphasis_flags,
+    )
     return image
 
 
 def _render_split(
     text: str,
     *,
+    emphasis_flags: list[bool],
     accent: tuple[int, int, int],
     secondary: tuple[int, int, int],
     text_color: tuple[int, int, int],
@@ -322,6 +393,7 @@ def _render_split(
         align="center",
         text_color=text_color,
         highlight=secondary,
+        emphasis_flags=emphasis_flags,
     )
     return image
 
@@ -329,6 +401,7 @@ def _render_split(
 def _render_minimal(
     text: str,
     *,
+    emphasis_flags: list[bool],
     accent: tuple[int, int, int],
     secondary: tuple[int, int, int],
     text_color: tuple[int, int, int],
@@ -366,7 +439,13 @@ def _render_minimal(
     )
     block_top = top + max(0, (height - fitted.total_height) // 2)
     _draw_fitted_block(
-        draw, fitted, top=block_top, align="center", text_color=text_color, outline=accent
+        draw,
+        fitted,
+        top=block_top,
+        align="center",
+        text_color=text_color,
+        outline=accent,
+        emphasis_flags=emphasis_flags,
     )
     return image
 
@@ -420,14 +499,21 @@ def _render_thumbnail(
     accent = _hex_to_rgb(branding.accent_color)
     secondary = _hex_to_rgb(branding.secondary_color)
     text_color = _hex_to_rgb(branding.text_color)
+    plain_text, emphasis_flags = parse_emphasis(text)
 
     if layout == "split":
         image = _render_split(
-            text, accent=accent, secondary=secondary, text_color=text_color, context=context
+            plain_text,
+            emphasis_flags=emphasis_flags,
+            accent=accent,
+            secondary=secondary,
+            text_color=text_color,
+            context=context,
         )
     elif layout == "minimal":
         image = _render_minimal(
-            text,
+            plain_text,
+            emphasis_flags=emphasis_flags,
             accent=accent,
             secondary=secondary,
             text_color=text_color,
@@ -436,7 +522,12 @@ def _render_thumbnail(
         )
     else:
         image = _render_impact(
-            text, accent=accent, secondary=secondary, text_color=text_color, context=context
+            plain_text,
+            emphasis_flags=emphasis_flags,
+            accent=accent,
+            secondary=secondary,
+            text_color=text_color,
+            context=context,
         )
 
     if context.series_name is not None and context.position is not None:
@@ -502,7 +593,11 @@ def generate_thumbnail_candidates(session: Session, *, video_project_id: str) ->
             role=role,
             file_path=output_path,
             checksum=checksum,
-            meta={"spec_version": THUMBNAIL_SPEC_VERSION, "text": text, "layout": layout},
+            meta={
+                "spec_version": THUMBNAIL_SPEC_VERSION,
+                "text": parse_emphasis(text)[0],
+                "layout": layout,
+            },
         )
         assets.append(asset)
 

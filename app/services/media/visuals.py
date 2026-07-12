@@ -249,6 +249,71 @@ def _draw_chart(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int
         draw.text((x0, bottom + 18), label[:9], fill=(230, 235, 245), font=_font(23))
 
 
+def _draw_cta(draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]) -> None:
+    """エンディング用のチャンネル登録・グッドボタンCTA画面を描く。
+
+    キャラクター(両端)と重ならない中央帯に、YouTube風の大きなボタンを配置する。
+    """
+    del section, accent
+    center_x = VIDEO_WIDTH_16_9 // 2
+
+    # チャンネル登録ボタン(YouTube風の赤・最重要なので最大)。
+    sub_w, sub_h = 640, 150
+    sub_x0 = center_x - sub_w // 2
+    sub_y0 = 300
+    draw.rounded_rectangle(
+        (sub_x0, sub_y0, sub_x0 + sub_w, sub_y0 + sub_h),
+        radius=24,
+        fill=(230, 33, 23),
+        outline=(255, 255, 255),
+        width=5,
+    )
+    sub_font = _font(64, bold=True)
+    sub_text = "チャンネル登録"
+    text_w = draw.textlength(sub_text, font=sub_font)
+    draw.text((center_x - text_w / 2, sub_y0 + 36), sub_text, fill="white", font=sub_font)
+
+    # 通知ベル(登録ボタンの右隣)。
+    bell_cx = sub_x0 + sub_w + 90
+    bell_cy = sub_y0 + sub_h // 2
+    draw.ellipse((bell_cx - 52, bell_cy - 52, bell_cx + 52, bell_cy + 52), fill=(255, 200, 40))
+    draw.polygon(
+        [
+            (bell_cx - 26, bell_cy + 14),
+            (bell_cx + 26, bell_cy + 14),
+            (bell_cx + 18, bell_cy - 26),
+            (bell_cx + 8, bell_cy - 34),
+            (bell_cx - 8, bell_cy - 34),
+            (bell_cx - 18, bell_cy - 26),
+        ],
+        fill=(120, 78, 10),
+    )
+    draw.ellipse((bell_cx - 7, bell_cy + 16, bell_cx + 7, bell_cy + 30), fill=(120, 78, 10))
+
+    # グッドボタン(白枠+サムズアップ図形)。
+    like_w, like_h = 430, 120
+    like_x0 = center_x - like_w // 2
+    like_y0 = sub_y0 + sub_h + 60
+    draw.rounded_rectangle(
+        (like_x0, like_y0, like_x0 + like_w, like_y0 + like_h),
+        radius=20,
+        fill=(255, 255, 255, 30),
+        outline=(255, 255, 255),
+        width=4,
+    )
+    # サムズアップ: 親指(縦長角丸)+こぶし(横長角丸)。
+    thumb_x = like_x0 + 46
+    thumb_y = like_y0 + like_h // 2
+    draw.rounded_rectangle(
+        (thumb_x, thumb_y - 10, thumb_x + 58, thumb_y + 34), radius=8, fill=(255, 255, 255)
+    )
+    draw.rounded_rectangle(
+        (thumb_x + 6, thumb_y - 40, thumb_x + 26, thumb_y - 4), radius=8, fill=(255, 255, 255)
+    )
+    like_font = _font(50, bold=True)
+    draw.text((thumb_x + 86, like_y0 + 32), "グッド!", fill="white", font=like_font)
+
+
 def _draw_emphasis_words(
     draw: ImageDraw.ImageDraw, section: dict, accent: tuple[int, int, int]
 ) -> None:
@@ -284,7 +349,9 @@ def generate_section_visual(section: dict, output_path: Path) -> Path:
     title = str(section.get("visual_title") or section.get("heading") or "学習ポイント")
     _draw_header(draw, title, accent)
     visual_type = str(section.get("visual_type") or "dialogue")
-    if visual_type == "code":
+    if visual_type == "cta":
+        _draw_cta(draw, section, accent)
+    elif visual_type == "code":
         _draw_code(draw, section, accent)
     elif visual_type == "quiz":
         _draw_quiz(draw, section, accent)

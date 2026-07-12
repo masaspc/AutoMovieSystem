@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 CharacterId = Literal["zundamon", "metan", "tsumugi"]
 CharacterEmotion = Literal["neutral", "happy", "serious", "surprised"]
-VisualType = Literal["dialogue", "code", "key_point", "quiz", "diagram", "steps", "chart"]
+# "cta"はLLMには選ばせない(エンディングとして台本生成後にプログラムが必ず付与する。
+# app/services/scripts/outro.py参照)。
+VisualType = Literal["dialogue", "code", "key_point", "quiz", "diagram", "steps", "chart", "cta"]
 BackgroundStyle = Literal["classroom", "editor", "card", "quiz", "diagram"]
 CharacterLayout = Literal["full", "small_left", "small_right", "hidden"]
 

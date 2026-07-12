@@ -36,4 +36,5 @@ class TTSProvider(Protocol):
         output_path: Path,
         idempotency_key: str,
         speed_scale: float = 1.0,
+        emotion: str = "neutral",
     ) -> TTSResult: ...

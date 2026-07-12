@@ -17,11 +17,12 @@ from app.schemas.script_content import ScriptContent
 from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
 from app.services.scripts.duration import duration_within_range, estimate_duration_seconds
+from app.services.scripts.outro import append_outro_section
 from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v5_thumbnail_texts"
+PROMPT_VERSION = "script_v6_hook_cta_outro"
 OPERATION = "generate_script"
 REPAIR_PROMPT_VERSION = "script_repair_v2"
 REPAIR_OPERATION = "repair_script_duration"
@@ -159,8 +160,12 @@ def _build_prompts(
         "背景や動きは説明に必要なものだけを指定してください。"
         "さらに、サムネイル用のパンチラインを3案 thumbnail_texts に出力してください。"
         "各パンチラインは6〜12文字程度で、疑問形・数字・断定のいずれかの型にしてください"
-        "(例:「えっ、5分で?」「初心者の9割が誤解」)。誇張・断定表現の禁止方針は"
-        "thumbnail_textsにも適用してください。"
+        "(例:「えっ、5分で?」「初心者の9割が誤解」)。各案では最も引きになる語句1つを"
+        "《》で囲んでください(例:「えっ、《5分》で?」)。サムネイル描画時にその部分だけ"
+        "強調色で表示されます。誇張・断定表現の禁止方針はthumbnail_textsにも適用してください。"
+        "hookは動画の冒頭5秒で視聴者を掴む最重要パートです。挨拶や自己紹介から始めず、"
+        "「この動画で得られる結論・成果を先に見せる」1〜2文にしてください"
+        "(例: 「この動画を見終わる頃には、リストと辞書を迷わず使い分けられるようになります」)。"
     )
     evidence_lines = "\n".join(
         f"- id={e.id} claim={e.claim} source={e.source_url}" for e in evidence_list
@@ -331,6 +336,11 @@ async def generate_script(
                 max_duration_seconds=production_settings.max_duration_seconds,
                 attempts=attempt,
             )
+
+        # エンディング(チャンネル登録CTA)は全動画必須のため、尺検査・修復の後に
+        # プログラムが決定的に付与する(LLMの出力揺れに任せない。約15秒ぶんは
+        # 尺検査の対象外=本編尺が目標尺に合う)。
+        content = append_outro_section(content, seed=topic_id, cast=_allowed_dialogue_cast())
 
         source_manifest = {
             "evidence_ids": [e.id for e in evidence_list],

@@ -80,7 +80,9 @@ class FakeTTSProvider:
         output_path: Path,
         idempotency_key: str,
         speed_scale: float = 1.0,
+        emotion: str = "neutral",
     ) -> TTSResult:
+        del emotion  # Fakeは感情演技を持たない(決定的な出力を維持する)
         wav_bytes = synthesize_wav_bytes(text, speed_scale)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(wav_bytes)

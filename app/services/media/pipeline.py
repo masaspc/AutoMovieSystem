@@ -235,9 +235,17 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
 
 
 def build_section_idempotency_key(
-    video_project_id: str, section_index: int, narration: str, speed_scale: float = 1.0
+    video_project_id: str,
+    section_index: int,
+    narration: str,
+    speed_scale: float = 1.0,
+    emotion: str = "neutral",
 ) -> str:
-    text_hash = hashlib.sha256(f"{narration}|speed={speed_scale}".encode()).hexdigest()
+    # emotionはVOICEVOXの演技パラメータ(pitch/intonation/speed)に影響するため
+    # 冪等キーに含める(感情が変わったセリフは再合成される)。
+    text_hash = hashlib.sha256(
+        f"{narration}|speed={speed_scale}|emotion={emotion}".encode()
+    ).hexdigest()
     return f"synthesize_audio:{video_project_id}:{section_index}:{text_hash}"
 
 
@@ -275,9 +283,11 @@ async def synthesize_audio(
         index = line.index
         narration = line.text
         idempotency_key = build_section_idempotency_key(
-            video_project_id, index, narration, speed_scale
+            video_project_id, index, narration, speed_scale, line.emotion
         )
-        text_hash = hashlib.sha256(f"{narration}|speed={speed_scale}".encode()).hexdigest()
+        text_hash = hashlib.sha256(
+            f"{narration}|speed={speed_scale}|emotion={line.emotion}".encode()
+        ).hexdigest()
         relative_path = f"videos/{video_project_id}/audio/line_{index:02d}_{text_hash[:12]}.wav"
         output_path = resolve_generated_path(relative_path)
 
@@ -309,6 +319,7 @@ async def synthesize_audio(
                     output_path=_output_path,
                     idempotency_key=_idempotency_key,
                     speed_scale=speed_scale,
+                    emotion=_emotion,
                 )
                 checksum = result.checksum
                 duration_seconds = result.duration_seconds
