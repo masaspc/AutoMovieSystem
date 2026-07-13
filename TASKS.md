@@ -83,6 +83,12 @@
       字幕焼き込みのデフォルトOFF化(SUBTITLE_BURN_IN_ENABLED)+PlayResスケール修正、
       RENDER_SPEC_VERSIONによる旧キャッシュ無効化、scene concat最終尺欠落のffmpeg
       バージョン差対策(-tクランプ)。commit `12441b5`
+- [x] 投稿後セルフレビュー改善ループ(D-026): 指標・場面別維持率・コメント分類をLLMで振り返り、
+      指標日単位で冪等なself_review Insightとして保存。手動実行+UTC前日分の日次beat、
+      次回台本への自動注入、Insight削除によるオプトアウトに対応
+- [x] トレンド即応動画化(D-026): Fake/RSS 2.0/Atom Provider、見出し+http(s)リンク+200字要約に
+      限定した`/trends`一覧、URL重複防止、Short×news_commentary×seriousのワンクリック制作を
+      自動レビューまで実装。人間承認・投稿のfail-closedゲートは維持
 
 ## 動画クオリティアップ バックログ(2026-07-12 整理、優先順)
 
@@ -95,8 +101,8 @@
       (モバイル無音視聴対策)
 - [x] D. 情報デザイン: chart visual_typeの簡易グラフ、コードカードのシンタックスハイライト、
       BackgroundProvider抽象化(画像生成API接続の将来受け口。テストはFake)
-- [ ] E. 分析ループ発展: 維持率×scene_type相関のInsight化→台本プロンプト自動反映
-      (retention.pyの土台あり)
+- [x] E. 分析ループ発展: 維持率×scene_type相関、投稿指標、コメント分類をself_review Insightへ
+      集約し、次回台本プロンプトへの自動反映まで実装(D-026)
 - [ ] F. 運用: CIでのmedia/e2e実行確認(PR作成が必要)、docs更新(SUBTITLE_BURN_IN・
       キャラ配置方針・BGM運用)、実YouTube OAuth設定(収益化の最終要件。
       カスタムサムネイルはYouTube側の電話番号確認が前提)

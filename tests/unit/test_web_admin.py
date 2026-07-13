@@ -358,6 +358,48 @@ def test_jobs_retry_unknown_job_type_requires_manual_intervention(
     assert "info=" in response.headers["location"]
 
 
+def test_jobs_retry_self_review_uses_feedback_service(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_full_fixture(db_session)
+    publication = db_session.query(Publication).one()
+    job = JobRun(
+        job_type="self_review",
+        entity_type="publication",
+        entity_id=publication.id,
+        idempotency_key=f"self_review:{publication.id}:{date.today().isoformat()}",
+        status="failed",
+        last_error="simulated llm failure",
+    )
+    db_session.add(job)
+    db_session.commit()
+    calls: list[tuple[str, date | None]] = []
+
+    async def _fake_run_self_review(
+        session: Session,
+        *,
+        publication_id: str,
+        provider: object,
+        metric_date: date | None = None,
+    ) -> list[Insight]:
+        del session, provider
+        calls.append((publication_id, metric_date))
+        return []
+
+    import app.web.jobs_page as jobs_page
+
+    monkeypatch.setattr(jobs_page, "run_self_review", _fake_run_self_review)
+    get_response = client.get("/jobs")
+    response = client.post(
+        f"/jobs/{job.id}/retry",
+        data={"csrf_token": get_response.cookies["csrf_token"]},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert calls == [(publication.id, date.today())]
+
+
 def test_usage_page_reflects_usage_record(client: TestClient, db_session: Session) -> None:
     record = UsageRecord(
         provider="fake",

@@ -15,7 +15,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
-SOURCE_TYPES = ("manual", "csv", "rss", "comment", "analytics", "derived", "webhook", "benchmark")
+SOURCE_TYPES = (
+    "manual",
+    "csv",
+    "rss",
+    "trend",
+    "comment",
+    "analytics",
+    "derived",
+    "webhook",
+    "benchmark",
+)
 RISK_LEVELS = ("low", "medium", "high")
 TOPIC_STATUSES = ("created", "scored", "research_ready", "rejected")
 

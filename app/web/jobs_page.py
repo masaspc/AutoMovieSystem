@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -15,6 +16,7 @@ from app.models.job_run import JobRun
 from app.providers.llm.factory import get_llm_provider
 from app.providers.tts.factory import get_tts_provider
 from app.providers.youtube.factory import get_youtube_provider
+from app.services.feedback.self_review import run_self_review
 from app.services.jobs import JobInProgressError
 from app.services.media.pipeline import (
     prepare_assets,
@@ -66,6 +68,17 @@ async def _retry_job(session: Session, job_run: JobRun) -> None:
         score_topic(session, entity_id)
     elif job_type == "generate_script":
         await generate_script(session, topic_id=entity_id, provider=get_llm_provider())
+    elif job_type == "self_review":
+        try:
+            metric_date = date.fromisoformat(job_run.idempotency_key.rsplit(":", 1)[-1])
+        except ValueError:
+            metric_date = None
+        await run_self_review(
+            session,
+            publication_id=entity_id,
+            provider=get_llm_provider(),
+            metric_date=metric_date,
+        )
     else:
         raise _ManualInterventionRequiredError(job_type)
 

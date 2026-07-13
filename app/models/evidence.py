@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.timeutil import utcnow_naive
 from app.db.base import Base
 
-VERIFICATION_STATUSES = ("unverified", "verified", "disputed")
+VERIFICATION_STATUSES = ("pending", "unverified", "verified", "disputed")
 
 
 class Evidence(Base):

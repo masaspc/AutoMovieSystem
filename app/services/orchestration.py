@@ -182,11 +182,12 @@ def _advance_status(project: VideoProject, target: str) -> None:
 
 
 def _ensure_dummy_evidence(session: Session, *, topic_id: str) -> Evidence:
-    """RESEARCH_READY前提のダミーリサーチ根拠を1件get-or-createする。"""
+    """既存Evidenceを優先し、根拠がないデモ企画だけダミーを補う。"""
     existing = (
         session.query(Evidence)
-        .filter(Evidence.topic_id == topic_id, Evidence.source_url == DEMO_EVIDENCE_SOURCE_URL)
-        .one_or_none()
+        .filter(Evidence.topic_id == topic_id)
+        .order_by(Evidence.created_at.asc())
+        .first()
     )
     if existing is not None:
         return existing

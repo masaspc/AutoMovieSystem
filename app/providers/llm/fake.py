@@ -267,6 +267,27 @@ def _classify_comment(
     return data
 
 
+def _self_review(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict[str, Any]:
+    """`self_review` operation用の決定的な振り返りレポート。"""
+    del seed, operation, user_prompt, schema
+    return {
+        "good_points": ["フックで結論を先出しできていた"],
+        "bad_points": ["コード画面が長く続く場面で離脱が見られた"],
+        "lessons": [
+            {
+                "finding": "コード画面が長いと維持率が下がる",
+                "recommended_action": "コード解説は1画面30秒以内に分割してください",
+            },
+            {
+                "finding": "確認要素のある場面は視聴をつなぎやすい",
+                "recommended_action": "中盤に確認クイズを1問入れてください",
+            },
+        ],
+    }
+
+
 # content_review用の誇張・断定NGワード(inspector.py DEFAULT_NG_WORDSと同趣旨)。
 _CONTENT_REVIEW_NG_WORDS: tuple[str, ...] = (
     "絶対に儲かる",
@@ -299,6 +320,7 @@ _GENERATORS: dict[str, Generator] = {
     "regenerate_script_section": _regenerate_script_section,
     "generate_curriculum": _generate_curriculum,
     "classify_comment": _classify_comment,
+    "self_review": _self_review,
     "review_content": _review_content,
 }
 

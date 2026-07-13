@@ -2,7 +2,7 @@
 
 本番環境での日々の操作・トラブル対応手順。
 
-## 管理画面の役割 (12ページ)
+## 管理画面の主なページ
 
 http://localhost:8000/dashboard にアクセス(Jinja2+HTMX):
 
@@ -16,6 +16,7 @@ http://localhost:8000/dashboard にアクセス(Jinja2+HTMX):
 | **公開(Publications)** | `/publications` | YouTube アップロード状況・スケジュール状態 |
 | **コメント(Comments)** | `/comments` | YouTube コメント一覧・分類(QUESTION等) |
 | **インサイト(Insights)** | `/insights` | 自動生成 Insight・次回企画候補 |
+| **トレンド(Trends)** | `/trends` | RSS見出しの確認・ニュース解説Shortの即動画化 |
 | **ジョブ(Jobs)** | `/jobs` | 実行状況・失敗ジョブ詳細・再実行操作 |
 | **利用状況(Usage)** | `/usage` | AI予算 (daily/monthly)・警告表示 |
 | **設定(Settings)** | `/settings` | 環境変数確認・予算変更 |
@@ -153,6 +154,74 @@ published_at が non-NULL な Publication に対して:
 - `/insights` で確認
 
 status → `FEEDBACK_GENERATED` (最終状態。新企画を投入して次サイクル)
+
+## トレンド即応の運用
+
+### 設定
+
+既定は外部ネットワークへ接続しないFake Provider。RSSを使う場合は`.env`を次のように設定し、
+設定を読み込むappを再起動する。
+
+```dotenv
+TREND_PROVIDER=rss
+TREND_FEED_URLS=https://example.com/feed.xml,https://example.org/atom.xml
+TREND_FETCH_LIMIT=20
+```
+
+`TREND_FEED_URLS`はRSS 2.0/Atomフィードのhttp(s) URLをカンマ区切りで指定する。
+取り込むのは見出し、リンク、200字以内の要約、公開時刻だけで、記事本文は取得・保存しない。
+テスト・デモでは`TREND_PROVIDER=fake`のまま運用する。
+
+### 即動画化
+
+1. ナビの「グロース」→`/trends`を開く。
+2. 動画化先チャンネルを選び、「⚡ 即動画化(Short)」を押す。
+3. 企画詳細の進捗バナーで一括制作を確認する。
+4. 自動レビュー完了後は従来どおり内容を確認し、人間が承認・投稿する。
+
+作成される動画は`short`、`news_commentary`、`serious`固定。出典URLはEvidenceへ保存される。
+同じ記事URLはURLハッシュで同じTopicへ解決され、制作パイプラインの冪等性で重複を防ぐ。
+
+### RSS障害時
+
+到達不能、タイムアウト、不正XML、無効なURLはフィード単位で警告ログを残してスキップする。
+正常なフィードの記事はそのまま表示される。全件空の場合は次を確認する。
+
+1. `TREND_PROVIDER=rss`と`TREND_FEED_URLS`の綴り、URLのhttp(s)形式を確認する。
+2. `docker compose logs app`で`trend_feed_*`警告と接続エラーを確認する。
+3. フィードの到達性・XMLを修正し、`/trends`を再読み込みする。
+
+## セルフレビュー改善ループの運用
+
+### 手動実行と自動反映
+
+投稿後指標が同期されたPublicationは、`/publications`または動画プロジェクト詳細の
+「自己レビューを実行」から処理できる。最新の日次指標、場面別維持率Insight、コメント分類を
+LLMで1回分析し、最大5件の`self_review` Insightを作る。LLM呼び出しは通常のUsageRecord・
+予算管理対象である。
+
+冪等キーは`self_review:{publication_id}:{指標日}`。同じ指標日の再操作ではLLMを重複実行せず、
+新しい日の指標が入れば再レビューできる。保存された改善指示は、同じチャンネルの次回台本生成時に
+「過去動画の振り返りからの改善指示」ブロックとして自動注入される。
+
+### 日次beat
+
+`feedback.run_daily_self_reviews`を86400秒ごとに実行し、実行時点のUTC前日分の指標がある投稿を
+処理する。自動運用にはCelery workerとbeatの両方が必要。
+
+```powershell
+docker compose ps worker beat
+docker compose logs beat worker
+```
+
+指標がない投稿は正常にスキップする。投稿1件の失敗で残りは停止せず、失敗はworkerログと
+`/jobs`で確認する。予算超過やLLMエラーを解消後、対象投稿のボタンから手動で再実行する。
+
+### 自動注入を止める
+
+`/insights?insight_type=self_review`を開き、反映したくない改善提案の「削除」を実行する。
+削除したInsightは以後の台本プロンプトへ注入されない。過去に生成済みの台本は変更されず、
+新しい指標日のセルフレビューで追加されたInsightは必要に応じて改めて確認・削除する。
 
 ## ジョブ運用
 
@@ -439,6 +508,7 @@ logger.info("task_started", idempotency_key="...", operation="...")
 
 - `/usage` で予算確認(80% 以上なら節制)
 - `/jobs` で失敗確認・Retry
+- beat/workerログで前日分セルフレビューの候補数・失敗数を確認
 
 ### 週次
 

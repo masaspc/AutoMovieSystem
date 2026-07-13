@@ -14,6 +14,7 @@ from app.models.topic import Topic
 from app.providers.llm.base import LLMProvider
 from app.schemas.production_settings import ProductionSettings
 from app.schemas.script_content import ScriptContent
+from app.services.feedback.self_review import collect_recent_lessons
 from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
 from app.services.scripts.duration import duration_within_range, estimate_duration_seconds
@@ -192,6 +193,15 @@ def _allowed_dialogue_cast() -> list[str]:
     return allowed_cast
 
 
+def _build_self_review_lessons_context(session: Session, *, channel_id: str) -> str:
+    """直近のセルフレビューを、台本生成プロンプト末尾へ追加する。"""
+    lessons = collect_recent_lessons(session, channel_id=channel_id, limit=5)
+    if not lessons:
+        return ""
+    lesson_lines = "\n".join(f"- {lesson.recommended_action}" for lesson in lessons)
+    return f"\n\n【過去動画の振り返りからの改善指示(必ず反映)】\n{lesson_lines}"
+
+
 def _collect_evidence_ids(content: ScriptContent) -> set[str]:
     ids: set[str] = set()
     for section in content.sections:
@@ -255,6 +265,7 @@ async def generate_script(
     evidence_list = session.query(Evidence).filter(Evidence.topic_id == topic_id).all()
     system_prompt, user_prompt = _build_prompts(topic, evidence_list, production_settings)
     system_prompt += build_series_script_context(session, topic_id)
+    system_prompt += _build_self_review_lessons_context(session, channel_id=topic.channel_id)
     idempotency_key = build_idempotency_key(
         topic_id, PROMPT_VERSION, settings_checksum, regeneration_key
     )

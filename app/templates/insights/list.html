@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h2>改善提案(Insight)</h2>
-    <p class="page-desc">コメント・指標から生成された企画候補と改善アクション。根拠と信頼度付き。</p>
+    <p class="page-desc">コメント・指標から生成された企画候補と改善アクション。self_reviewを削除すると、今後の台本への自動反映から外れます。</p>
   </div>
 </div>
 
@@ -21,7 +21,7 @@
 
 <div class="table-wrap">
   <table>
-    <tr><th>種別</th><th>内容</th><th>推奨アクション</th><th>根拠</th><th>信頼度</th></tr>
+    <tr><th>種別</th><th>内容</th><th>推奨アクション</th><th>根拠</th><th>信頼度</th><th>操作</th></tr>
     {% for insight in insights %}
     <tr>
       <td>{{ status_badge(insight.insight_type) }}</td>
@@ -29,9 +29,16 @@
       <td>{{ insight.recommended_action }}</td>
       <td class="muted">{{ insight.evidence }}</td>
       <td><strong>{{ insight.confidence }}</strong></td>
+      <td>
+        <form method="post" action="/insights/{{ insight.id }}/delete" onsubmit="return confirm('この改善提案を削除しますか？');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="insight_type" value="{{ insight_type_filter }}" />
+          <button type="submit" class="btn-danger btn-sm">削除</button>
+        </form>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="5"><div class="empty">Insightはまだありません</div></td></tr>
+    <tr><td colspan="6"><div class="empty">Insightはまだありません</div></td></tr>
     {% endfor %}
   </table>
 </div>

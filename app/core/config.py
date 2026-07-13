@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     BGM_ASSETS_DIR: str = "assets/bgm"
     SE_ASSETS_DIR: str = "assets/se"
 
-    # トレンド情報源(D-022)。既定fake=テスト・デモでネットワークを使わない。
+    # トレンド情報源(D-026)。既定fake=テスト・デモでネットワークを使わない。
     # rss指定時はTREND_FEED_URLS(カンマ区切りのRSS/AtomフィードURL)から取得する。
     TREND_PROVIDER: str = "fake"
     TREND_FEED_URLS: str = ""

@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.workers.tasks.reviews",
         "app.workers.tasks.publishing",
         "app.workers.tasks.analytics",
+        "app.workers.tasks.feedback",
     ],
 )
 
@@ -45,5 +46,10 @@ celery_app.conf.beat_schedule = {
     "finalize-due-publications-every-15-minutes": {
         "task": "analytics.finalize_due_publications",
         "schedule": 900.0,
+    },
+    # 前日分の投稿指標から改善レッスンを作り、次回台本へ反映する。
+    "run-daily-self-reviews": {
+        "task": "feedback.run_daily_self_reviews",
+        "schedule": 86400.0,
     },
 }

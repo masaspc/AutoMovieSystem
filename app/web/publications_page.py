@@ -19,6 +19,7 @@ from app.models.publication import Publication
 from app.providers.youtube.factory import get_youtube_provider
 from app.services.publishing.scheduler import PublicationNotFoundError, schedule_publication
 from app.web.common import require_csrf, with_message
+from app.workers.tasks.feedback import run_self_review_task
 
 logger = get_logger(__name__)
 
@@ -29,7 +30,11 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 @router.get("/publications", response_class=HTMLResponse)
 def list_publications(
-    request: Request, db: DbSession, upload_status: str | None = None
+    request: Request,
+    db: DbSession,
+    upload_status: str | None = None,
+    task_id: str | None = None,
+    task_label: str | None = None,
 ) -> HTMLResponse:
     query = db.query(Publication)
     if upload_status:
@@ -45,10 +50,36 @@ def list_publications(
             "publications": publications,
             "upload_status_filter": upload_status or "",
             "csrf_token": csrf_token,
+            "task_id": task_id,
+            "task_label": task_label,
         },
     )
     set_csrf_cookie(response, csrf_token)
     return response
+
+
+@router.post("/publications/{publication_id}/self-review")
+def run_publication_self_review(
+    publication_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    """投稿後指標を使う自己レビューを非同期で開始する。"""
+    require_csrf(request, csrf_token)
+    if db.get(Publication, publication_id) is None:
+        raise HTTPException(status_code=404, detail="publication not found")
+
+    task = run_self_review_task.delay(publication_id)
+    logger.info(
+        "publication_self_review_dispatched",
+        publication_id=publication_id,
+        task_id=task.id,
+    )
+    return RedirectResponse(
+        url=f"/publications?task_id={task.id}&task_label=自己レビュー",
+        status_code=303,
+    )
 
 
 def _parse_scheduled_at(scheduled_at: str | None) -> datetime:

@@ -255,6 +255,13 @@
         <span class="mono">{{ publication.youtube_video_id or "未発行" }}</span>
         <span class="badge badge-neutral">{{ publication.privacy_status }}</span>
       </p>
+      {% if publication.upload_status == "completed" and publication.youtube_video_id %}
+      <form method="post" action="/video-projects/{{ project.id }}/self-review" style="margin-top: 10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn-secondary btn-sm"{{ ' disabled' if task_id else '' }}>自己レビューを実行</button>
+      </form>
+      <p class="muted" style="margin-bottom: 0;">最新の投稿後指標・場面別維持率・コメント傾向から、次回台本への改善指示を作ります。</p>
+      {% endif %}
       {% else %}
       <div class="empty">未投稿です</div>
       {% endif %}

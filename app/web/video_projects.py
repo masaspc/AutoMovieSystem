@@ -34,6 +34,7 @@ from app.services.media.dialogue import dialogue_script_enabled, extract_speech_
 from app.services.scripts.duration import estimate_duration_seconds
 from app.services.scripts.editor import ScriptEditError, save_edited_script
 from app.web.common import require_csrf, with_message
+from app.workers.tasks.feedback import run_self_review_task
 from app.workers.tasks.media import (
     prepare_assets_task,
     render_video_task,
@@ -203,9 +204,7 @@ def video_project_detail(
         else 0.0
     )
     script_editable = bool(
-        validated_content
-        and project.status in _SCRIPT_EDITABLE_STATUSES
-        and not assets
+        validated_content and project.status in _SCRIPT_EDITABLE_STATUSES and not assets
     )
 
     csrf_token = get_or_issue_csrf_token(request)
@@ -441,6 +440,39 @@ def _require_video_project(video_project_id: str, db: Session) -> None:
         raise HTTPException(status_code=404, detail=f"VideoProject not found: {video_project_id}")
 
 
+@router.post("/video-projects/{video_project_id}/self-review")
+def video_project_self_review(
+    video_project_id: str,
+    request: Request,
+    db: DbSession,
+    csrf_token: Annotated[str, Form()],
+) -> RedirectResponse:
+    """詳細画面から、この動画のPublicationを自己レビューする。"""
+    require_csrf(request, csrf_token)
+    _require_video_project(video_project_id, db)
+    publication = (
+        db.query(Publication)
+        .filter(
+            Publication.video_project_id == video_project_id,
+            Publication.upload_status == "completed",
+            Publication.youtube_video_id.is_not(None),
+        )
+        .order_by(Publication.created_at.desc())
+        .first()
+    )
+    if publication is None:
+        raise HTTPException(status_code=409, detail="投稿後に自己レビューを実行できます")
+
+    task = run_self_review_task.delay(publication.id)
+    logger.info(
+        "video_project_self_review_dispatched",
+        video_project_id=video_project_id,
+        publication_id=publication.id,
+        task_id=task.id,
+    )
+    return _dispatch_task(video_project_id, task.id, "自己レビュー")
+
+
 @router.post("/video-projects/{video_project_id}/pipeline/prepare-assets")
 def pipeline_prepare_assets(
     video_project_id: str, request: Request, db: DbSession, csrf_token: Annotated[str, Form()]
@@ -492,9 +524,7 @@ def pipeline_upload(
     require_csrf(request, csrf_token)
     _require_video_project(video_project_id, db)
     task = upload_video_task.delay(video_project_id)
-    logger.info(
-        "pipeline_upload_dispatched", video_project_id=video_project_id, operator=operator
-    )
+    logger.info("pipeline_upload_dispatched", video_project_id=video_project_id, operator=operator)
     return _dispatch_task(video_project_id, task.id, "アップロード")
 
 

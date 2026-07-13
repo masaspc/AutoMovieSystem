@@ -90,6 +90,9 @@ OPERATION_LIMITS: dict[str, OperationLimits] = {
     "classify_comment": OperationLimits(
         max_input_tokens=2_000, max_output_tokens=500, max_cost_micro_usd=200_000
     ),
+    "self_review": OperationLimits(
+        max_input_tokens=6_000, max_output_tokens=2_000, max_cost_micro_usd=1_000_000
+    ),
 }
 _DEFAULT_OPERATION_LIMITS = OperationLimits(
     max_input_tokens=4_000, max_output_tokens=2_000, max_cost_micro_usd=1_000_000

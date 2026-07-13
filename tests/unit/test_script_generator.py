@@ -11,9 +11,12 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.channel import Channel
 from app.models.evidence import Evidence
+from app.models.insight import Insight
+from app.models.publication import Publication
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.usage_record import UsageRecord
+from app.models.video_project import VideoProject
 from app.providers.llm.base import StructuredLLMResult
 from app.providers.llm.fake import DeterministicFakeLLMProvider
 from app.schemas.production_settings import ProductionSettings
@@ -361,3 +364,155 @@ def test_regeneration_key_forces_new_script_version(db_session: Session) -> None
 
     assert rebuilt.id != first.id
     assert rebuilt.version == first.version + 1
+
+
+class _CapturingFakeProvider:
+    """Fake LLMへ委譲しつつ、operationごとのsystem promptを記録する。"""
+
+    def __init__(self) -> None:
+        self._delegate = DeterministicFakeLLMProvider()
+        self.system_prompts: list[tuple[str, str]] = []
+
+    async def generate_structured(
+        self,
+        *,
+        operation: str,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: type[BaseModel],
+        model_policy: str,
+        idempotency_key: str,
+    ) -> StructuredLLMResult:
+        self.system_prompts.append((operation, system_prompt))
+        return await self._delegate.generate_structured(
+            operation=operation,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_schema=response_schema,
+            model_policy=model_policy,
+            idempotency_key=idempotency_key,
+        )
+
+
+def _add_self_review_insights(
+    db_session: Session, *, channel_id: str, recommended_actions: list[str]
+) -> list[Insight]:
+    prior_topic = Topic(
+        channel_id=channel_id,
+        title="過去動画",
+        source_type="manual",
+        source_ref="past-video-for-self-review",
+    )
+    db_session.add(prior_topic)
+    db_session.flush()
+    project = VideoProject(
+        topic_id=prior_topic.id,
+        status="UPLOADED_PRIVATE",
+        generation=1,
+    )
+    db_session.add(project)
+    db_session.flush()
+    publication = Publication(
+        video_project_id=project.id,
+        youtube_video_id="past-video-id",
+        title="過去動画",
+        description="",
+        privacy_status="private",
+        idempotency_key="upload:past-video-for-self-review",
+        upload_status="completed",
+    )
+    db_session.add(publication)
+    db_session.flush()
+    insights = [
+        Insight(
+            source_type="publication",
+            source_id=publication.id,
+            insight_type="self_review",
+            source_ref=f"self_review:{publication.id}:2026-07-12:{index}",
+            finding=f"改善点{index + 1}",
+            evidence={"metric_date": "2026-07-12"},
+            confidence=0.6,
+            recommended_action=action,
+            human_review_reason="次回台本へ自動反映",
+        )
+        for index, action in enumerate(recommended_actions)
+    ]
+    db_session.add_all(insights)
+    db_session.flush()
+    return insights
+
+
+def _new_topic_for_channel(db_session: Session, *, channel_id: str, source_ref: str) -> Topic:
+    topic = Topic(
+        channel_id=channel_id,
+        title="次回動画",
+        description="セルフレビューを反映する次回企画",
+        source_type="manual",
+        source_ref=source_ref,
+    )
+    db_session.add(topic)
+    db_session.flush()
+    return topic
+
+
+def _initial_system_prompt(provider: _CapturingFakeProvider) -> str:
+    return next(
+        prompt for operation, prompt in provider.system_prompts if operation == "generate_script"
+    )
+
+
+def test_generate_script_appends_self_review_lessons_at_prompt_end(
+    db_session: Session,
+) -> None:
+    topic = _make_topic(db_session)
+    action = "コード解説は1画面30秒以内に分割してください"
+    _add_self_review_insights(db_session, channel_id=topic.channel_id, recommended_actions=[action])
+    provider = _CapturingFakeProvider()
+
+    asyncio.run(generate_script(db_session, topic_id=topic.id, provider=provider))
+
+    prompt = _initial_system_prompt(provider)
+    expected_block = f"【過去動画の振り返りからの改善指示(必ず反映)】\n- {action}"
+    assert prompt.endswith(expected_block)
+
+
+def test_generate_script_injects_at_most_five_self_review_lessons(
+    db_session: Session,
+) -> None:
+    topic = _make_topic(db_session)
+    _add_self_review_insights(
+        db_session,
+        channel_id=topic.channel_id,
+        recommended_actions=[f"改善指示{index}" for index in range(6)],
+    )
+    provider = _CapturingFakeProvider()
+
+    asyncio.run(generate_script(db_session, topic_id=topic.id, provider=provider))
+
+    prompt = _initial_system_prompt(provider)
+    lesson_block = prompt.split("【過去動画の振り返りからの改善指示(必ず反映)】\n", 1)[1]
+    assert len(lesson_block.splitlines()) == 5
+
+
+def test_deleted_self_review_lesson_is_not_injected_into_new_topic(
+    db_session: Session,
+) -> None:
+    base_topic = _make_topic(db_session)
+    action = "削除後は注入されない改善指示"
+    insight = _add_self_review_insights(
+        db_session, channel_id=base_topic.channel_id, recommended_actions=[action]
+    )[0]
+    db_session.delete(insight)
+    db_session.flush()
+    new_topic = _new_topic_for_channel(
+        db_session,
+        channel_id=base_topic.channel_id,
+        source_ref="new-topic-after-self-review-deletion",
+    )
+    provider = _CapturingFakeProvider()
+
+    asyncio.run(generate_script(db_session, topic_id=new_topic.id, provider=provider))
+
+    prompt = _initial_system_prompt(provider)
+    assert "過去動画の振り返りからの改善指示" not in prompt
+    assert action not in prompt

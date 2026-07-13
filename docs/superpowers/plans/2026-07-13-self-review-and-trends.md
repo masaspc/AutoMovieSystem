@@ -87,7 +87,7 @@ def test_factory_rejects_unknown_provider() -> None:
 
 ```python
 # app/providers/trends/base.py
-"""トレンド情報源の共通型・Protocol(D-022)。
+"""トレンド情報源の共通型・Protocol(D-026)。
 
 外部記事からは見出し・リンク・短い要約のみを扱う(本文の取得・転載は行わない。
 docs/content-policy.md準拠)。実装はこのパッケージ配下のみ(fake.py / rss.py)。
@@ -189,7 +189,7 @@ def get_trend_provider(settings: Settings | None = None) -> TrendProvider:
 config.py(`SE_ASSETS_DIR: str = "assets/se"` の直後):
 
 ```python
-    # トレンド情報源(D-022)。既定fake=テスト・デモでネットワークを使わない。
+    # トレンド情報源(D-026)。既定fake=テスト・デモでネットワークを使わない。
     # rss指定時はTREND_FEED_URLS(カンマ区切りのRSS/AtomフィードURL)から取得する。
     TREND_PROVIDER: str = "fake"
     TREND_FEED_URLS: str = ""
@@ -560,7 +560,7 @@ def test_instant_videoize_dedups_same_url(db_session: Session) -> None:
 
 ```python
 # app/services/trends/service.py
-"""トレンド記事のワンクリック動画化(D-022)。
+"""トレンド記事のワンクリック動画化(D-026)。
 
 Topic(source_type="trend")+Evidence(出典URL)+ニュース解説Short設定の
 VideoProjectを作成し、既存の一括制作(produce_video_task)へ引き渡せる状態にする。
@@ -748,7 +748,7 @@ def test_videoize_creates_topic_and_dispatches_production(
 
 ```python
 # app/web/trends_page.py
-"""トレンド(最新情報)一覧+ワンクリック即動画化(D-022)。"""
+"""トレンド(最新情報)一覧+ワンクリック即動画化(D-026)。"""
 
 from __future__ import annotations
 
@@ -1020,7 +1020,7 @@ def test_collect_recent_lessons_returns_channel_scoped_insights(db_session: Sess
 
 ```python
 # app/schemas/self_review.py
-"""投稿後セルフレビューのLLM構造化出力(D-022)。"""
+"""投稿後セルフレビューのLLM構造化出力(D-026)。"""
 
 from __future__ import annotations
 
@@ -1044,7 +1044,7 @@ class SelfReviewReport(BaseModel):
 
 ```python
 # app/services/feedback/self_review.py
-"""投稿後セルフレビュー(D-022)。
+"""投稿後セルフレビュー(D-026)。
 
 指標・場面別維持率・コメント分類からLLMが良かった点/悪かった点/改善レッスンを
 抽出し、Insight(insight_type="self_review")として保存する。レッスンは
@@ -1452,7 +1452,7 @@ def run_daily_self_reviews() -> int:
 celery_app.py: includeへ `"app.workers.tasks.feedback",` を追加し、beat_scheduleへ:
 
 ```python
-    # 投稿後セルフレビュー(D-022): 指標のある投稿を日次で振り返り、次回台本へ反映する。
+    # 投稿後セルフレビュー(D-026): 指標のある投稿を日次で振り返り、次回台本へ反映する。
     "run-daily-self-reviews": {
         "task": "feedback.run_daily_self_reviews",
         "schedule": 86400.0,
@@ -1494,13 +1494,13 @@ publications一覧GETルートに `task_id`/`task_label` クエリ受け取り+�
 ### Task 8: ドキュメント+全体検証+Docker反映
 
 **Files:**
-- Modify: `TASKS.md`(追加開発セクションへ2行)/ `DECISIONS.md`(D-022追記)/ `docs/operations.md`(トレンド運用・セルフレビュー運用の節)
+- Modify: `TASKS.md`(追加開発セクションへ2行)/ `DECISIONS.md`(D-026追記)/ `docs/operations.md`(トレンド運用・セルフレビュー運用の節)
 
 **Steps:**
-- [ ] DECISIONS.md へ D-022 を追記: トレンド収集はRSS(見出し+リンク+要約のみ・本文転載なし・既定fake)、セルフレビューは日次自動+レッスン自動注入(Insight削除でオプトアウト)、即動画化はShort×news_commentary固定で一括制作まで(承認・投稿は人間のまま)
-- [ ] TASKS.md の追加開発セクションへ完了行を追記
-- [ ] docs/operations.md へ「トレンド即応の運用」「セルフレビューの運用(自動反映の止め方=Insight削除)」を追記
-- [ ] 全体検証: `uv run ruff check . && uv run mypy app && uv run pytest -q`(実FFmpeg環境でmedia/e2e含め全緑)
+- [x] DECISIONS.md へ D-026 を追記: トレンド収集はRSS(見出し+リンク+要約のみ・本文転載なし・既定fake)、セルフレビューは日次自動+レッスン自動注入(Insight削除でオプトアウト)、即動画化はShort×news_commentary固定で一括制作まで(承認・投稿は人間のまま)
+- [x] TASKS.md の追加開発セクションへ完了行を追記
+- [x] docs/operations.md へ「トレンド即応の運用」「セルフレビューの運用(自動反映の止め方=Insight削除)」を追記
+- [x] 全体検証: `uv run ruff check . && uv run mypy app && uv run pytest -q`(実FFmpeg環境でmedia/e2e含め494 passed・1 skipped、失敗0件)
 - [ ] `docker compose up -d --build app worker beat` で反映し、`docker compose exec app sh -c "ls /app/app/providers/trends"` で新モジュール存在確認
 - [ ] コミット+`git push origin feature/video-quality-and-ops`
 

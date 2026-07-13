@@ -1,6 +1,6 @@
 # 設計: 投稿後セルフレビュー改善ループ + トレンド即応動画化
 
-日付: 2026-07-13 / 承認: ユーザー確認済み(RSS方式・自動反映・ワンクリック一括制作)
+日付: 2026-07-13 / 承認: ユーザー確認済み(RSS方式・自動反映・ワンクリック一括制作) / 決定: D-026
 
 ## 目的
 
@@ -116,4 +116,4 @@ RSS/Atomフィード(TREND_FEED_URLS)
 
 ## ドキュメント更新
 
-- `.env.example`(TREND_*)、`TASKS.md`、`DECISIONS.md`(D-022)、`docs/operations.md`
+- `.env.example`(TREND_*)、`TASKS.md`、`DECISIONS.md`(D-026)、`docs/operations.md`

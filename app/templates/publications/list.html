@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import status_badge, task_banner %}
 {% block title %}投稿一覧 | AutoMovie{% endblock %}
 {% block content %}
+{{ task_banner(task_id, task_label, "/publications") }}
 <div class="page-header">
   <div>
     <h2>投稿(Publication)</h2>
@@ -35,6 +36,12 @@
           <label class="muted" style="font-weight: 400;">公開予約日時: <input type="datetime-local" name="scheduled_at" /></label>
           <button type="submit" class="btn-secondary btn-sm">公開予約(空なら即時)</button>
         </form>
+        {% if publication.upload_status == "completed" and publication.youtube_video_id %}
+        <form class="inline" method="post" action="/publications/{{ publication.id }}/self-review" style="margin-top: 6px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn-secondary btn-sm"{{ ' disabled' if task_id else '' }}>自己レビューを実行</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% else %}

@@ -29,6 +29,9 @@ os.environ["LLM_PROVIDER_MID"] = ""
 os.environ["LLM_PROVIDER_HIGH"] = ""
 os.environ["TTS_PROVIDER"] = "fake"
 os.environ["YOUTUBE_PROVIDER"] = "fake"
+# トレンド一覧もローカル.envのrss設定を読ませず、決定的Fakeへ固定する。
+os.environ["TREND_PROVIDER"] = "fake"
+os.environ["TREND_FEED_URLS"] = ""
 # DIALOGUE_SCRIPT_ENABLED/CHARACTER_RENDER_ENABLED も同様。開発者ローカルの .env で
 # trueにしていると、ダミー画像・音声を使う既存テストがPillowでの読み込み等に失敗する。
 # 個別にこの機能を検証するテストは Settings(...) 直接構築か monkeypatch.setenv で

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}トレンド | AutoMovie{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>トレンド</h2>
+    <p class="page-desc">最新の見出しと短い要約から、独自解説のShortを自動レビューまで一括制作します。承認・投稿は従来どおり人間が行います。</p>
+  </div>
+  <div class="actions"><span class="badge badge-neutral">source: {{ provider_name }}</span></div>
+</div>
+
+{% if not channels %}
+<div class="flash flash-warning">動画化先のチャンネルがありません。先にチャンネルを登録してください。</div>
+{% endif %}
+
+{% if not items %}
+<div class="card"><div class="empty">記事を取得できませんでした。RSS利用時は TREND_FEED_URLS の設定と到達性を確認してください。</div></div>
+{% endif %}
+
+{% for item in items %}
+<article class="card">
+  <h3 class="card-title">
+    <a href="{{ item.url }}" rel="noopener noreferrer" referrerpolicy="no-referrer" target="_blank">{{ item.title }}</a>
+  </h3>
+  <p class="muted" style="margin: 0 0 6px;">
+    {{ item.source }}{% if item.published_at %} ・ {{ item.published_at.strftime("%m/%d %H:%M") }}{% endif %}
+  </p>
+  {% if item.summary %}<p style="margin: 0 0 12px;">{{ item.summary }}</p>{% endif %}
+  <form method="post" action="/trends/videoize">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="title" value="{{ item.title }}" />
+    <input type="hidden" name="url" value="{{ item.url }}" />
+    <input type="hidden" name="summary" value="{{ item.summary }}" />
+    <input type="hidden" name="source" value="{{ item.source }}" />
+    <div class="form-row" style="align-items: end;">
+      <div class="field" style="margin: 0; min-width: 240px;">
+        <label>動画化先チャンネル</label>
+        <select name="channel_id" required{{ ' disabled' if not channels else '' }}>
+          <option value="" selected disabled>選択してください</option>
+          {% for channel in channels %}
+          <option value="{{ channel.id }}">{{ channel.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"{{ ' disabled' if not channels else '' }}>⚡ 即動画化(Short)</button>
+    </div>
+  </form>
+</article>
+{% endfor %}
+{% endblock %}
