@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import get_settings
 
@@ -51,5 +52,11 @@ celery_app.conf.beat_schedule = {
     "run-daily-self-reviews": {
         "task": "feedback.run_daily_self_reviews",
         "schedule": 86400.0,
+    },
+    # 夜間自動制作: 未制作企画のスコア上位を毎晩、自動レビューまで一括制作する
+    # (朝は承認するだけの状態を作る。本数はAUTO_PRODUCE_DAILY_COUNT、0で無効)。
+    "auto-produce-daily": {
+        "task": "production.auto_produce_daily",
+        "schedule": crontab(hour=3, minute=0),
     },
 }

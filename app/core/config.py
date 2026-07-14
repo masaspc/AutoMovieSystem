@@ -112,6 +112,14 @@ class Settings(BaseSettings):
     TREND_FEED_URLS: str = ""
     TREND_FETCH_LIMIT: int = 20
 
+    # --- 毎日投稿の自動化(人間の作業は「承認」だけに絞る) ---
+    # 夜間自動制作: 未制作の企画(スコア上位)を毎晩この本数だけ自動レビューまで一括制作する。
+    # 0で無効。承認・公開は従来どおり人間(fail-closed不変)。
+    AUTO_PRODUCE_DAILY_COUNT: int = 1
+    # 人間が承認した瞬間にprivateアップロードまで自動実行する(公開ではないため安全。
+    # 公開はAUTO_PUBLISH_ENABLED/公開ゲートの管理のまま)。falseなら従来のボタン運用。
+    AUTO_UPLOAD_AFTER_APPROVAL: bool = True
+
     # プロバイダー選択(デフォルトはすべてFake。実APIキー未設定でも全機能デモ可能: D-006)
     LLM_PROVIDER: str = "fake"
     TTS_PROVIDER: str = "fake"

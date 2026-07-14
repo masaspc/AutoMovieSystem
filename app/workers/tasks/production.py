@@ -72,3 +72,62 @@ def produce_video_task(self: Task, topic_id: str) -> str:
         raise
     finally:
         session.close()
+
+
+def select_auto_produce_topics(session, limit: int) -> list[str]:  # type: ignore[no-untyped-def]
+    """夜間自動制作の対象Topicを選ぶ(スコア上位・未制作のもの)。
+
+    対象: VideoProjectが存在しない、または台本段階(SCRIPT_REVIEWED以前)で止まっている
+    Topic。制作中(ASSETS_READY以降)・失敗状態(人間の判断待ち)・完了済みは除外する。
+    シリーズの「制作開始」済みエピソードのTopicも同じ条件で自然に対象になる。
+    """
+    from app.models.topic import Topic
+    from app.models.video_project import VideoProject
+
+    producible_states = (
+        "TOPIC_CREATED",
+        "TOPIC_SCORED",
+        "RESEARCH_READY",
+        "SCRIPT_GENERATED",
+        "SCRIPT_REVIEWED",
+    )
+    selected: list[str] = []
+    topics = session.query(Topic).order_by(Topic.total_score.desc(), Topic.created_at.asc()).all()
+    for topic in topics:
+        if len(selected) >= limit:
+            break
+        latest_project = (
+            session.query(VideoProject)
+            .filter(VideoProject.topic_id == topic.id)
+            .order_by(VideoProject.generation.desc())
+            .first()
+        )
+        if latest_project is None or latest_project.status in producible_states:
+            selected.append(topic.id)
+    return selected
+
+
+@celery_app.task(name="production.auto_produce_daily")
+def auto_produce_daily() -> int:
+    """夜間自動制作(beat): 未制作の企画スコア上位N本を自動レビューまで一括制作する。
+
+    朝には承認待ちの動画が並んでいる状態を作る(人間の作業は承認のみ)。
+    N=AUTO_PRODUCE_DAILY_COUNT(0で無効)。各制作は既存の冪等パイプラインで、
+    失敗しても翌晩の再実行で途中から再開される。
+    """
+    from app.core.config import get_settings
+
+    limit = get_settings().AUTO_PRODUCE_DAILY_COUNT
+    if limit <= 0:
+        return 0
+
+    session = SessionLocal()
+    try:
+        topic_ids = select_auto_produce_topics(session, limit)
+    finally:
+        session.close()
+
+    for topic_id in topic_ids:
+        produce_video_task.delay(topic_id)
+        logger.info("auto_produce_dispatched", topic_id=topic_id)
+    return len(topic_ids)

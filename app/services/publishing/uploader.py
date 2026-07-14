@@ -81,6 +81,21 @@ def _with_voicevox_credits(description: str, body: dict) -> str:
     return f"{description.rstrip()}{separator}" + "\n".join(missing)
 
 
+def _with_auto_chapters(description: str, source_manifest: dict) -> str:
+    """レンダリング時に実測尺から生成したチャプターを概要欄へ重複なく追記する。
+
+    YouTubeのチャプター有効化要件(先頭が0:00・3個以上)を満たす場合のみ追記する。
+    """
+    chapters = [str(c) for c in (source_manifest.get("auto_chapters") or []) if str(c).strip()]
+    if len(chapters) < 3 or not chapters[0].startswith("0:00"):
+        return description
+    if chapters[0] in description:
+        return description
+    block = "\n".join(chapters)
+    separator = "\n\n" if description.strip() else ""
+    return f"{description.rstrip()}{separator}{block}"
+
+
 def _with_bgm_credit(description: str, session: Session, video_project_id: str) -> str:
     """使用BGMのクレジット(Asset role="bgm" のmeta)を概要欄へ重複なく追記する。
 
@@ -315,6 +330,7 @@ async def upload_video(
     body = script.body or {}
     title = script.title
     description = _with_voicevox_credits(str(body.get("description") or ""), body)
+    description = _with_auto_chapters(description, script.source_manifest or {})
     description = _with_bgm_credit(description, session, video_project_id)
     tags = list(body.get("tags") or [])
     privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
@@ -406,6 +422,9 @@ def record_publication_failure_in_new_session(
         body = script.body if script is not None and script.body else {}
         title = script.title if script is not None else f"VideoProject {video_project_id}"
         description = _with_voicevox_credits(str(body.get("description") or ""), body)
+        description = _with_auto_chapters(
+            description, (script.source_manifest if script is not None else None) or {}
+        )
         description = _with_bgm_credit(description, new_session, video_project_id)
         tags = list(body.get("tags") or [])
         privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS

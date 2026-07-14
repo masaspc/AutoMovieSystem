@@ -502,6 +502,32 @@ def _resolve_channel_name(session: Session, project: VideoProject) -> str:
     return channel.name if channel is not None else ""
 
 
+def build_chapter_lines(
+    sections: list[dict], speech_lines: list, durations: list[float]
+) -> list[str]:
+    """実測音声尺からYouTubeチャプター行("M:SS 見出し")を組み立てる。
+
+    LLMが推測したchapters(body.chapters)は実際の尺とずれるため、レンダリング時に
+    実測値で作り直す。YouTubeのチャプター要件(先頭0:00・3個以上)は
+    アップロード側(_with_auto_chapters)が判定する。
+    """
+    chapter_lines: list[str] = []
+    elapsed = 0.0
+    seen: set[int] = set()
+    for line, duration in zip(speech_lines, durations, strict=True):
+        if line.section_index not in seen:
+            seen.add(line.section_index)
+            heading = (
+                str(sections[line.section_index].get("heading") or "")
+                if line.section_index < len(sections)
+                else ""
+            )
+            minutes, seconds = divmod(int(elapsed), 60)
+            chapter_lines.append(f"{minutes}:{seconds:02d} {heading}".rstrip())
+        elapsed += duration
+    return chapter_lines
+
+
 def render_video(
     session: Session,
     *,
@@ -626,6 +652,12 @@ def render_video(
                 section_durations,
             )
         )
+
+        # 実測尺ベースの正確なチャプターを保存する(アップロード時に概要欄へ自動追記)。
+        auto_chapters = build_chapter_lines(
+            list((script.body or {}).get("sections") or []), speech_lines, section_durations
+        )
+        script.source_manifest = {**(script.source_manifest or {}), "auto_chapters": auto_chapters}
 
         manifest_path = visuals.write_scene_manifest(
             list((script.body or {}).get("sections") or []),

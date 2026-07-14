@@ -103,6 +103,38 @@ def approve_video_project(
             video_project_id, error="既に処理済み、または現在の状態では実行できません"
         )
     db.commit()
+
+    # 承認=人間ゲート通過後、privateアップロードまで自動実行する(公開ではないため安全。
+    # 公開は従来どおりAUTO_PUBLISH_ENABLED/公開ゲートの管理)。人間の作業を承認1回に絞る。
+    from app.core.config import get_settings
+
+    if get_settings().AUTO_UPLOAD_AFTER_APPROVAL:
+        from app.workers.tasks.publishing import upload_video_task
+
+        try:
+            task = upload_video_task.delay(video_project_id)
+        except Exception as exc:  # noqa: BLE001
+            # CELERY_TASK_ALWAYS_EAGER環境ではタスクが同期実行され、失敗が例外として
+            # ここへ届く。自動アップロードの失敗で承認自体(コミット済み)を巻き添えに
+            # しない(動画詳細のアップロードボタンから手動で再実行できる)。
+            logger.warning(
+                "auto_upload_after_approval_failed",
+                video_project_id=video_project_id,
+                error_type=type(exc).__name__,
+            )
+        else:
+            logger.info(
+                "auto_upload_dispatched_after_approval",
+                video_project_id=video_project_id,
+                operator=admin_user,
+            )
+            return RedirectResponse(
+                url=(
+                    f"/video-projects/{video_project_id}"
+                    f"?task_id={task.id}&task_label=自動アップロード(private)"
+                ),
+                status_code=303,
+            )
     return RedirectResponse(url=f"/video-projects/{video_project_id}/review", status_code=303)
 
 

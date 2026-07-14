@@ -107,6 +107,12 @@
       キャラ配置方針・BGM運用)、実YouTube OAuth設定(収益化の最終要件。
       カスタムサムネイルはYouTube側の電話番号確認が前提)
 
+- [x] 毎日投稿の完全自動化(人間の作業は承認1回のみ): 夜間自動制作
+      (production.auto_produce_daily beat=毎晩3時、未制作企画のスコア上位N本を
+      自動レビューまで制作。AUTO_PRODUCE_DAILY_COUNT)、承認後の自動private
+      アップロード(AUTO_UPLOAD_AFTER_APPROVAL。公開はAUTO_PUBLISHゲートのまま)、
+      実測音声尺からの正確なチャプター自動生成→概要欄自動追記(視聴ナビ・維持率対策)
+
 ## 未解決事項
 
 - Docker Desktop 初回起動中(GUI初期化待ち。docker CLI が PATH 未反映。compose 検証は Phase 8)
