@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.schemas.script_content import ScriptContent, ScriptSection
 from app.services.scripts.outro import (
+    _OUTRO_VARIATIONS,
     OUTRO_VISUAL_TYPE,
     append_outro_section,
     build_outro_section,
@@ -64,3 +65,11 @@ def test_outro_variation_is_deterministic_per_seed() -> None:
     first = build_outro_section(seed="topic-1", cast=["zundamon", "metan"])
     second = build_outro_section(seed="topic-1", cast=["zundamon", "metan"])
     assert first.dialogue[0].text == second.dialogue[0].text
+
+
+def test_all_eight_outro_variations_keep_both_required_calls_to_action() -> None:
+    assert len(_OUTRO_VARIATIONS) == 8
+    for variation in _OUTRO_VARIATIONS:
+        combined = "".join(variation)
+        assert "グッドボタン" in combined
+        assert "チャンネル登録" in combined
