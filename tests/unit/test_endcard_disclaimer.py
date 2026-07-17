@@ -21,4 +21,7 @@ def test_endcard_disclaimer_changes_only_configured_output(tmp_path: Path) -> No
 
     with Image.open(without_path) as without_image, Image.open(with_path) as with_image:
         assert with_image.size == (1920, 1080)
-        assert ImageChops.difference(without_image, with_image).getbbox() is not None
+        difference_bbox = ImageChops.difference(without_image, with_image).getbbox()
+        assert difference_bbox is not None
+        assert difference_bbox[1] >= 900
+        assert difference_bbox[3] <= 1080

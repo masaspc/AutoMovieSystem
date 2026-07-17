@@ -43,8 +43,8 @@ def _make_script(body: dict, *, source_manifest: dict | None = None, **kwargs: o
         title=kwargs.get("title", "タイトル"),
         hook=kwargs.get("hook", body.get("hook", "フック")),
         body=body,
-        conclusion=body.get("conclusion"),
-        call_to_action=body.get("call_to_action"),
+        conclusion=kwargs.get("conclusion", body.get("conclusion")),
+        call_to_action=kwargs.get("call_to_action", body.get("call_to_action")),
         source_manifest=source_manifest or {"evidence_ids": []},
         status="draft",
     )
@@ -168,6 +168,71 @@ def test_prohibited_expression_is_blocking(expression: str) -> None:
     codes = {f.code: f.severity for f in findings}
 
     assert codes.get("prohibited_expression") == SEVERITY_BLOCKING
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "title",
+        "title_candidate",
+        "hook",
+        "description",
+        "conclusion",
+        "call_to_action",
+        "dialogue",
+        "narration",
+    ],
+)
+def test_prohibited_expression_cannot_bypass_gate_by_field(field: str) -> None:
+    expression = "絶対に上がる"
+    body = _base_body()
+    script_kwargs: dict[str, object] = {}
+    if field == "title":
+        script_kwargs["title"] = expression
+    elif field == "title_candidate":
+        body["title_candidates"] = [expression]
+    elif field == "hook":
+        script_kwargs["hook"] = expression
+    elif field == "description":
+        body["description"] = expression
+    elif field == "conclusion":
+        body["conclusion"] = expression
+    elif field == "call_to_action":
+        body["call_to_action"] = expression
+    elif field == "dialogue":
+        body["sections"][0]["dialogue"] = [{"speaker": "ずんだもん", "text": expression}]
+    else:
+        body["sections"][0]["narration"] = expression
+        body["sections"][0]["dialogue"] = [{"speaker": "ずんだもん", "text": "安全な説明"}]
+
+    findings = inspect_script(_make_script(body, **script_kwargs))
+
+    assert any(
+        finding.code == "prohibited_expression" and finding.severity == SEVERITY_BLOCKING
+        for finding in findings
+    )
+
+
+@pytest.mark.parametrize(
+    ("body_field", "script_field", "expected_label"),
+    [
+        ("hook", "hook", "body.hook"),
+        ("conclusion", "conclusion", "body.conclusion"),
+        ("call_to_action", "call_to_action", "body.call_to_action"),
+    ],
+)
+def test_prohibited_expression_scans_body_when_script_column_is_safe(
+    body_field: str, script_field: str, expected_label: str
+) -> None:
+    body = _base_body(**{body_field: "必ず儲かる"})
+    script = _make_script(body, **{script_field: "安全な表現"})
+
+    findings = inspect_script(script)
+
+    assert any(
+        finding.code == "prohibited_expression" and expected_label in finding.message
+        for finding in findings
+    )
 
 
 def test_sentence_too_long_is_warning() -> None:

@@ -114,9 +114,15 @@
       実測音声尺からの正確なチャプター自動生成→概要欄自動追記(視聴ナビ・維持率対策)
 - [x] 演出バリエーションエンジン(D-028): topic_id起点の台本構成抽選、video_project_id起点の
       Ken Burns・場面転換・見出し・配色抽選、アウトロ8種、抽選結果マニフェスト保存
+- [x] チャンネル編集方針・金融ガードレール(D-029): チャンネル別トーン/対象/禁止事項/
+      免責文/トレンドRSS/既定制作設定、台本プロンプト注入、断定表現blocking、概要欄と
+      エンディングへの免責表示、アップロード前fail-closed検証
 
 ## 未解決事項
 
+- チャンネル別RSS URLは現在http(s)形式のみ検証。運用者設定URLとリダイレクト先の
+  private/loopback/link-local/reserved IP拒否、およびレスポンスのストリーミング容量上限を
+  本番接続前に追加する(SSRF・巨大レスポンス対策。review-change MEDIUM)。
 - Docker Desktop 初回起動中(GUI初期化待ち。docker CLI が PATH 未反映。compose 検証は Phase 8)
 - LLM料金表(MODEL_PRICING)と operation別上限(OPERATION_LIMITS)はコード内定数。料金改定時はコード変更が必要(MVP許容)
 - スコア再計算は idempotency_key 固定のため初回のみ。再スコアリング運用は将来対応

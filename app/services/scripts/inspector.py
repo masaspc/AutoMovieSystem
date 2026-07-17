@@ -71,6 +71,42 @@ def inspect_script(
     title_candidates = body.get("title_candidates") or []
     sections = body.get("sections") or []
 
+    # 公開・表示される全テキストを共通NGワードゲートへ通す。dialogueがある場合も
+    # narrationを捨てず、両方を独立に検査してフィールド移動による回避を防ぐ。
+    viewer_texts: list[tuple[str, str]] = [
+        ("title", str(script.title or "")),
+        ("script.hook", str(script.hook or "")),
+        ("body.hook", str(body.get("hook") or "")),
+        ("description", str(body.get("description") or "")),
+        ("script.conclusion", str(script.conclusion or "")),
+        ("body.conclusion", str(body.get("conclusion") or "")),
+        ("script.call_to_action", str(script.call_to_action or "")),
+        ("body.call_to_action", str(body.get("call_to_action") or "")),
+    ]
+    viewer_texts.extend(
+        (f"title_candidates.{index}", str(candidate))
+        for index, candidate in enumerate(title_candidates)
+    )
+    for section_index, section in enumerate(sections):
+        viewer_texts.append(
+            (f"sections.{section_index}.narration", str(section.get("narration") or ""))
+        )
+        viewer_texts.extend(
+            (f"sections.{section_index}.dialogue.{dialogue_index}", str(item.get("text") or ""))
+            for dialogue_index, item in enumerate(section.get("dialogue") or [])
+        )
+
+    for field_name, text in viewer_texts:
+        for word in ng_words:
+            if word in text:
+                findings.append(
+                    Finding(
+                        "prohibited_expression",
+                        SEVERITY_BLOCKING,
+                        f"{field_name}に禁止表現「{word}」が含まれます",
+                    )
+                )
+
     if not title_candidates:
         findings.append(
             Finding("empty_title_candidates", SEVERITY_BLOCKING, "タイトル候補が空です")
@@ -126,16 +162,6 @@ def inspect_script(
                     f"セクション{idx}に根拠のない数値表現があります",
                 )
             )
-
-        for word in ng_words:
-            if word in spoken_text:
-                findings.append(
-                    Finding(
-                        "prohibited_expression",
-                        SEVERITY_BLOCKING,
-                        f"セクション{idx}に禁止表現「{word}」が含まれます",
-                    )
-                )
 
         for sentence in _split_sentences(spoken_text):
             if len(sentence) > _MAX_SENTENCE_LENGTH:
