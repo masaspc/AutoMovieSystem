@@ -9,6 +9,32 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom: 24px;">
+  <h3 class="card-title">チャンネル別編集方針</h3>
+  <p class="muted">空欄の項目は従来設定を使用します。禁止事項とフィードURLは1行に1件入力してください。</p>
+  {% if channel_policies %}
+    {% for item in channel_policies %}
+    <details class="card" style="margin-top: 14px;"{{ ' open' if loop.first else '' }}>
+      <summary><strong>{{ item.channel.name }}</strong></summary>
+      <form method="post" action="/settings/channels/{{ item.channel.id }}/editorial-policy" style="margin-top: 16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label>トーン</label><textarea name="tone" rows="3">{{ item.policy.tone }}</textarea></div>
+          <div class="field"><label>対象視聴者</label><textarea name="target_audience" rows="3">{{ item.policy.target_audience }}</textarea></div>
+          <div class="field"><label>禁止事項</label><textarea name="prohibited_instructions" rows="6">{{ item.policy.prohibited_instructions | join('\n') }}</textarea></div>
+          <div class="field"><label>免責文</label><textarea name="disclaimer_text" rows="6">{{ item.policy.disclaimer_text }}</textarea></div>
+          <div class="field"><label>RSS/AtomフィードURL</label><textarea name="trend_feed_urls" rows="6">{{ item.policy.trend_feed_urls | join('\n') }}</textarea></div>
+          <div class="field"><label>既定制作設定(JSON)</label><textarea class="mono" name="default_production_settings_json" rows="8">{{ item.default_production_settings_json }}</textarea></div>
+        </div>
+        <button type="submit">編集方針を保存</button>
+      </form>
+    </details>
+    {% endfor %}
+  {% else %}
+    <div class="empty">編集対象のチャンネルがありません。</div>
+  {% endif %}
+</div>
+
 <div class="detail-grid">
   <div class="card">
     <h3 class="card-title">主要設定</h3>

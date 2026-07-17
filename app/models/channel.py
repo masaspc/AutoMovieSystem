@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import JSON, Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utcnow_naive
@@ -24,6 +24,7 @@ class Channel(Base):
         String(16), nullable=False, default="private"
     )
     auto_publish_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    editorial_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_naive)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive
