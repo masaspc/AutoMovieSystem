@@ -69,6 +69,21 @@ def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:
             assert image.size == (1920, 1080)
 
 
+def test_heading_and_accent_variety_change_generated_visual(tmp_path: Path) -> None:
+    section = {"heading": "演出テスト", "visual_type": "key_point"}
+    outputs = []
+    for index, heading_style in enumerate(("banner", "underline", "side_accent")):
+        path = generate_section_visual(
+            section,
+            tmp_path / f"heading-{index}.png",
+            heading_style=heading_style,
+            accent_hue_shift=12,
+        )
+        outputs.append(path.read_bytes())
+
+    assert len(set(outputs)) == 3
+
+
 def test_background_providers_follow_the_same_contract(tmp_path: Path) -> None:
     section = {"heading": "背景", "visual_type": "key_point"}
     for index, provider in enumerate((PillowBackgroundProvider(), FakeBackgroundProvider())):

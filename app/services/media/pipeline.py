@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import wave
+from dataclasses import asdict
 from pathlib import Path
 
 from sqlalchemy.exc import IntegrityError
@@ -32,7 +33,7 @@ from app.providers.background.factory import get_background_provider
 from app.providers.tts.base import TTSProvider
 from app.schemas.production_settings import ProductionSettings
 from app.services.jobs import JobInProgressError, run_idempotent, run_idempotent_async
-from app.services.media import bgm, characters, dialogue, renderer, subtitles, visuals
+from app.services.media import bgm, characters, dialogue, renderer, subtitles, variety, visuals
 from app.services.media.probe import inspect_rendered_video
 from app.services.state_machine import transition
 
@@ -77,7 +78,7 @@ def _get_script(session: Session, project: VideoProject) -> Script:
 # prepare_assets: 背景画像生成 + Asset登録。SCRIPT_REVIEWED -> ASSETS_READY。
 # ---------------------------------------------------------------------------
 
-ASSET_SPEC_VERSION = 2
+ASSET_SPEC_VERSION = 3
 
 
 def build_prepare_assets_idempotency_key(video_project_id: str) -> str:
@@ -148,6 +149,7 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
     project = _get_video_project(session, video_project_id)
     script = _get_script(session, project)
     idempotency_key = build_prepare_assets_idempotency_key(video_project_id)
+    visual_plan = variety.pick_visual_variety_plan(video_project_id)
 
     def _do_prepare() -> VideoProject:
         background_provider = get_background_provider()
@@ -155,7 +157,12 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
         relative_path = f"videos/{video_project_id}/background.png"
         output_path = resolve_generated_path(relative_path)
         first_section = sections[0] if sections else {"heading": script.title}
-        background_provider.generate(first_section, output_path)
+        first_section_with_variety = {
+            **first_section,
+            "_variety_heading_style": visual_plan.heading_style,
+            "_variety_accent_hue_shift": visual_plan.accent_hue_shift,
+        }
+        background_provider.generate(first_section_with_variety, output_path)
         checksum = renderer.compute_file_checksum(output_path)
 
         _upsert_asset(
@@ -172,7 +179,12 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
             section_path = resolve_generated_path(
                 f"videos/{video_project_id}/backgrounds/section_{index:02d}.png"
             )
-            background_provider.generate(section, section_path)
+            section_with_variety = {
+                **section,
+                "_variety_heading_style": visual_plan.heading_style,
+                "_variety_accent_hue_shift": visual_plan.accent_hue_shift,
+            }
+            background_provider.generate(section_with_variety, section_path)
             _upsert_asset(
                 session,
                 video_project_id=video_project_id,
@@ -186,6 +198,11 @@ def prepare_assets(session: Session, *, video_project_id: str) -> VideoProject:
                     "visual_type": section.get("visual_type", "dialogue"),
                 },
             )
+
+        script.source_manifest = {
+            **(script.source_manifest or {}),
+            "visual_variety_plan": asdict(visual_plan),
+        }
 
         # シリーズ統一サムネイル自動生成(モジュール分割による循環importを避けるため
         # 遅延import)。候補3案を生成し、role="thumbnail"(選択済み)が未設定なら
@@ -455,7 +472,8 @@ def _fetch_section_backgrounds(
 # v3: BGMダッキングミックス+セクション切替SE(Phase A: 音響)。
 # v4: キーワードテロップ、グラフ、コード色分け、背景プロバイダー抽象化。
 # v5: 教材背景のピクセル幅フィットとコード抽出。
-RENDER_SPEC_VERSION = 5
+# v6: 決定論的Ken Burns・場面転換・見出し・アクセント配色バリエーション。
+RENDER_SPEC_VERSION = 6
 
 
 def _compute_render_input_checksum(
@@ -580,6 +598,7 @@ def render_video(
     production_settings = ProductionSettings.model_validate(
         project.production_settings or ProductionSettings().model_dump()
     )
+    visual_plan = variety.pick_visual_variety_plan(video_project_id)
     section_durations = [float((a.meta or {}).get("duration_seconds", 0.0)) for a in audio_assets]
     bgm_track = bgm.select_bgm(
         video_project_id=video_project_id, mood=production_settings.bgm_mood, settings=settings
@@ -644,6 +663,7 @@ def render_video(
                 sections=list((script.body or {}).get("sections") or []),
                 settings=settings,
                 output_dir=srt_path.parent / f"scenes_{input_checksum[:16]}",
+                transition_style=visual_plan.transition_style,
             )
             if character_render_enabled
             else visuals.build_background_frames(
@@ -689,6 +709,7 @@ def render_video(
             endcard_duration_seconds=endcard_duration_seconds,
             scene_frames=scene_frames,
             audio_mix=audio_mix,
+            visual_variety_plan=visual_plan,
         )
 
         try:

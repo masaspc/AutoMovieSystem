@@ -6,6 +6,7 @@ from PIL import Image
 
 from app.core.config import Settings
 from app.services.media.characters import (
+    _build_crossfade_frames,
     _portrait_path,
     build_scene_frames,
     character_credits,
@@ -245,3 +246,27 @@ def test_section_change_adds_crossfade_without_changing_total_duration(tmp_path:
 
     assert any("transition_001" in frame.path.name for frame in frames)
     assert abs(sum(frame.duration_seconds for frame in frames) - 2.0) < 1e-6
+
+
+def test_section_transition_styles_generate_distinct_frames(tmp_path: Path) -> None:
+    source = tmp_path / "source.png"
+    target = tmp_path / "target.png"
+    Image.new("RGB", (1920, 1080), (10, 20, 30)).save(source)
+    Image.new("RGB", (1920, 1080), (220, 120, 40)).save(target)
+
+    samples = []
+    for index, style in enumerate(("fade", "wipeleft", "slideup", "circleopen")):
+        output_dir = tmp_path / style
+        output_dir.mkdir()
+        frames = _build_crossfade_frames(
+            source=source,
+            target=target,
+            output_dir=output_dir,
+            section_index=index,
+            duration=0.4,
+            style=style,
+        )
+        assert abs(sum(frame.duration_seconds for frame in frames) - 0.4) < 1e-6
+        samples.append(frames[1].path.read_bytes())
+
+    assert len(set(samples)) == 4

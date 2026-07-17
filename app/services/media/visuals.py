@@ -15,6 +15,7 @@ from app.services.media.renderer import (
     SceneFrame,
     find_japanese_font,
 )
+from app.services.media.variety import HEADING_STYLES, shift_accent_hue
 
 _PALETTES = {
     "classroom": ((22, 29, 48), (69, 86, 128)),
@@ -92,10 +93,29 @@ def _wrap_pixels(
     return lines or [""]
 
 
-def _draw_header(draw: ImageDraw.ImageDraw, title: str, accent: tuple[int, int, int]) -> None:
-    draw.rounded_rectangle((90, 65, 1830, 190), radius=28, fill=(*accent, 235))
+def _draw_header(
+    draw: ImageDraw.ImageDraw,
+    title: str,
+    accent: tuple[int, int, int],
+    *,
+    style: str = "banner",
+) -> None:
+    """見出しを演出計画に対応した形で描画する。未知値はbannerへ戻す。"""
+    if style not in HEADING_STYLES:
+        style = "banner"
     font = _fit_font(draw, title, max_width=1650, preferred_size=48, bold=True)
-    draw.text((135, 93), _ellipsize(draw, title, font, 1650), fill="white", font=font)
+    fitted_title = _ellipsize(draw, title, font, 1650)
+    if style == "underline":
+        draw.rounded_rectangle((90, 60, 1830, 190), radius=24, fill=(9, 13, 24, 205))
+        draw.text((135, 82), fitted_title, fill="white", font=font)
+        draw.rounded_rectangle((135, 161, 720, 176), radius=7, fill=(*accent, 255))
+    elif style == "side_accent":
+        draw.rounded_rectangle((90, 65, 1830, 190), radius=20, fill=(9, 13, 24, 205))
+        draw.rounded_rectangle((90, 65, 118, 190), radius=12, fill=(*accent, 255))
+        draw.text((150, 93), fitted_title, fill="white", font=font)
+    else:
+        draw.rounded_rectangle((90, 65, 1830, 190), radius=28, fill=(*accent, 235))
+        draw.text((135, 93), fitted_title, fill="white", font=font)
 
 
 def _code_from_section(section: dict) -> str:
@@ -338,16 +358,31 @@ def _draw_emphasis_words(
         x += width + gap
 
 
-def generate_section_visual(section: dict, output_path: Path) -> Path:
+def generate_section_visual(
+    section: dict,
+    output_path: Path,
+    *,
+    heading_style: str | None = None,
+    accent_hue_shift: int | None = None,
+) -> Path:
     """セクションのvisual_typeに応じた1920x1080教材背景を生成する。"""
     style = str(section.get("background_style") or "classroom")
     base, accent = _PALETTES.get(style, _PALETTES["classroom"])
+    resolved_heading_style = heading_style or str(
+        section.get("_variety_heading_style") or "banner"
+    )
+    resolved_hue_shift = (
+        accent_hue_shift
+        if accent_hue_shift is not None
+        else int(section.get("_variety_accent_hue_shift") or 0)
+    )
+    accent = shift_accent_hue(accent, resolved_hue_shift)
     image = Image.new("RGB", (VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9), base)
     draw = ImageDraw.Draw(image, "RGBA")
     draw.ellipse((-250, -400, 900, 750), fill=(*accent, 26))
     draw.ellipse((1350, 600, 2200, 1350), fill=(*accent, 22))
     title = str(section.get("visual_title") or section.get("heading") or "学習ポイント")
-    _draw_header(draw, title, accent)
+    _draw_header(draw, title, accent, style=resolved_heading_style)
     visual_type = str(section.get("visual_type") or "dialogue")
     if visual_type == "cta":
         _draw_cta(draw, section, accent)

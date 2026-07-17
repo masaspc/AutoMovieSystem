@@ -25,6 +25,11 @@ from app.core.config import Settings, get_settings
 from app.core.paths import resolve_generated_path
 from app.core.subprocess_util import SubprocessError, run_checked
 from app.services.media.probe import probe_video
+from app.services.media.variety import (
+    VisualVarietyPlan,
+    ken_burns_filter,
+    pick_visual_variety_plan,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -69,6 +74,7 @@ class RenderInputs:
     scene_frames: list[SceneFrame] = field(default_factory=list)
     # BGM・SEのミックス指定(Phase A: 音響)。Noneなら従来どおり声のみ。
     audio_mix: AudioMixSpec | None = None
+    visual_variety_plan: VisualVarietyPlan | None = None
 
 
 @dataclass(frozen=True)
@@ -314,12 +320,13 @@ def _build_video_track(
     *,
     duration_seconds: float,
     timeout: float,
+    ken_burns_style: str = "zoom_in_left",
 ) -> None:
-    """背景画像+軽いズーム(zoompan)で16:9/30fpsの映像トラックを生成する。"""
+    """背景画像+決定論的Ken Burns演出で16:9/30fpsの映像トラックを生成する。"""
     vf = (
         f"scale={VIDEO_WIDTH_16_9}:{VIDEO_HEIGHT_16_9}:force_original_aspect_ratio=decrease,"
         f"pad={VIDEO_WIDTH_16_9}:{VIDEO_HEIGHT_16_9}:(ow-iw)/2:(oh-ih)/2,"
-        f"zoompan=z='min(zoom+0.0010,1.3)':d=1:s={VIDEO_WIDTH_16_9}x{VIDEO_HEIGHT_16_9},"
+        f"{ken_burns_filter(ken_burns_style)},"
         f"fps={VIDEO_FPS}"
     )
     args = [
@@ -343,7 +350,12 @@ def _build_video_track(
 
 
 def _build_scene_video_track(
-    ffmpeg_path: str, scene_frames: list[SceneFrame], output: Path, *, timeout: float
+    ffmpeg_path: str,
+    scene_frames: list[SceneFrame],
+    output: Path,
+    *,
+    timeout: float,
+    ken_burns_style: str = "zoom_in_left",
 ) -> None:
     """concat demuxerで立ち絵フレーム列を連結し、映像トラックを作る。"""
     if not scene_frames:
@@ -378,7 +390,7 @@ def _build_scene_video_track(
         "-i",
         str(concat_list),
         "-vf",
-        f"fps={VIDEO_FPS},format=yuv420p",
+        f"fps={VIDEO_FPS},{ken_burns_filter(ken_burns_style)},format=yuv420p",
         "-t",
         f"{total_duration:.3f}",
         "-pix_fmt",
@@ -552,10 +564,19 @@ def _render_impl(
         ffmpeg_path, inputs.section_audio_paths, audio_full, timeout=timeout, mix=inputs.audio_mix
     )
     audio_duration = probe_video(audio_full).duration_seconds
+    visual_plan = inputs.visual_variety_plan or pick_visual_variety_plan(
+        inputs.video_project_id
+    )
 
     video_main = work_dir / "video_main.mp4"
     if inputs.scene_frames:
-        _build_scene_video_track(ffmpeg_path, inputs.scene_frames, video_main, timeout=timeout)
+        _build_scene_video_track(
+            ffmpeg_path,
+            inputs.scene_frames,
+            video_main,
+            timeout=timeout,
+            ken_burns_style=visual_plan.ken_burns_style,
+        )
     else:
         _build_video_track(
             ffmpeg_path,
@@ -563,6 +584,7 @@ def _render_impl(
             video_main,
             duration_seconds=audio_duration,
             timeout=timeout,
+            ken_burns_style=visual_plan.ken_burns_style,
         )
 
     muxed_main = work_dir / "muxed_main.mp4"

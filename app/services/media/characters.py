@@ -240,9 +240,15 @@ def _compose_frame(
 
 
 def _build_crossfade_frames(
-    *, source: Path, target: Path, output_dir: Path, section_index: int, duration: float
+    *,
+    source: Path,
+    target: Path,
+    output_dir: Path,
+    section_index: int,
+    duration: float,
+    style: str = "fade",
 ) -> list[SceneFrame]:
-    """セクション境界を短くクロスフェードする。時間は後続セリフ尺の内数。"""
+    """セクション境界を指定スタイルで転換する。時間は後続セリフ尺の内数。"""
     if duration <= 0:
         return []
     with Image.open(source) as source_image, Image.open(target) as target_image:
@@ -252,7 +258,36 @@ def _build_crossfade_frames(
         step_duration = duration / _TRANSITION_STEPS
         for step in range(1, _TRANSITION_STEPS + 1):
             path = output_dir / f"transition_{section_index:03d}_{step}.png"
-            Image.blend(left, right, step / (_TRANSITION_STEPS + 1)).save(path, "PNG")
+            progress = step / (_TRANSITION_STEPS + 1)
+            if style == "wipeleft":
+                mask = Image.new("L", left.size, 0)
+                ImageDraw.Draw(mask).rectangle(
+                    (0, 0, round(VIDEO_WIDTH_16_9 * progress), VIDEO_HEIGHT_16_9),
+                    fill=255,
+                )
+                frame = Image.composite(right, left, mask)
+            elif style == "slideup":
+                frame = left.copy()
+                top = round(VIDEO_HEIGHT_16_9 * (1 - progress))
+                frame.paste(right, (0, top))
+            elif style == "circleopen":
+                mask = Image.new("L", left.size, 0)
+                radius = round(((VIDEO_WIDTH_16_9**2 + VIDEO_HEIGHT_16_9**2) ** 0.5) * progress)
+                center_x = VIDEO_WIDTH_16_9 // 2
+                center_y = VIDEO_HEIGHT_16_9 // 2
+                ImageDraw.Draw(mask).ellipse(
+                    (
+                        center_x - radius,
+                        center_y - radius,
+                        center_x + radius,
+                        center_y + radius,
+                    ),
+                    fill=255,
+                )
+                frame = Image.composite(right, left, mask)
+            else:
+                frame = Image.blend(left, right, progress)
+            frame.save(path, "PNG")
             result.append(SceneFrame(path=path, duration_seconds=step_duration))
     return result
 
@@ -266,6 +301,7 @@ def build_scene_frames(
     sections: list[dict] | None = None,
     settings: Settings,
     output_dir: Path,
+    transition_style: str = "fade",
 ) -> list[SceneFrame]:
     """セリフ単位で話者を強調したフレーム列を作る。open素材があれば交互表示する。"""
     if not settings.CHARACTER_RENDER_ENABLED:
@@ -309,6 +345,7 @@ def build_scene_frames(
                     output_dir=output_dir,
                     section_index=line.section_index,
                     duration=transition_duration,
+                    style=transition_style,
                 )
             )
         content_duration = max(0.0, duration - transition_duration)
