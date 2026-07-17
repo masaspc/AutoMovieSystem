@@ -95,7 +95,7 @@
 - [x] A. 音響: BGM選曲ライブラリ + assets/bgm/(権利確認済み素材のみ・リポジトリ外管理)+
       sidechaincompressによるセリフ中の自動ダッキング + セクション切替SE +
       ProductionSettings.bgm_mood。★ユーザー作業: BGM/SE素材の権利確認・配置
-- [ ] B. 動く背景: キャラ表示時もKen Burns(背景カメラワーク)を失わないフィルターグラフ統合、
+- [x] B. 動く背景: キャラ表示時もKen Burns(背景カメラワーク)を失わないフィルターグラフ統合、
       セクション間xfadeトランジション。方向はvideo_project_id起点の決定的疑似乱数(冪等)
 - [x] C. キーワードテロップ: 字幕OFF方針の補完としてemphasis_wordsの要点テロップ表示
       (モバイル無音視聴対策)
@@ -112,6 +112,8 @@
       自動レビューまで制作。AUTO_PRODUCE_DAILY_COUNT)、承認後の自動private
       アップロード(AUTO_UPLOAD_AFTER_APPROVAL。公開はAUTO_PUBLISHゲートのまま)、
       実測音声尺からの正確なチャプター自動生成→概要欄自動追記(視聴ナビ・維持率対策)
+- [x] 演出バリエーションエンジン(D-028): topic_id起点の台本構成抽選、video_project_id起点の
+      Ken Burns・場面転換・見出し・配色抽選、アウトロ8種、抽選結果マニフェスト保存
 
 ## 未解決事項
 
