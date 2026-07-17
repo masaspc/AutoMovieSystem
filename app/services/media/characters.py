@@ -24,6 +24,7 @@ from app.services.media.renderer import (
     SceneFrame,
     find_japanese_font,
 )
+from app.services.media.variety import animate_heading_overlay, visual_layer_path
 
 
 class CharacterAssetError(ValueError):
@@ -51,6 +52,24 @@ _EDGE_MARGIN = 60
 _BOTTOM_MARGIN = 60
 _TRANSITION_SECONDS = 0.24
 _TRANSITION_STEPS = 3
+
+
+def _overlay_path(composite_path: Path) -> Path:
+    return composite_path.with_name(f"{composite_path.stem}_overlay.png")
+
+
+def _character_overlay_path(composite_path: Path) -> Path:
+    return composite_path.with_name(f"{composite_path.stem}_characters.png")
+
+
+def _background_layer_path(background: Path) -> Path:
+    candidate = visual_layer_path(background, "base")
+    return candidate if candidate.exists() else background
+
+
+def _heading_layer_path(background: Path) -> Path | None:
+    candidate = visual_layer_path(background, "heading")
+    return candidate if candidate.exists() else None
 
 
 def character_credits(lines: list[SpeechLine]) -> list[str]:
@@ -187,8 +206,11 @@ def _compose_frame(
     section: dict,
     blinking: bool = False,
 ) -> Path:
-    with Image.open(background) as source:
-        canvas = source.convert("RGBA").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
+    with Image.open(_background_layer_path(background)) as source:
+        background_canvas = source.convert("RGBA").resize(
+            (VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9)
+        )
+    character_overlay = Image.new("RGBA", background_canvas.size, (0, 0, 0, 0))
     layout = str(section.get("character_layout") or "full")
     # キャラクターは途中で消さない: full以外(コード表示・図解など)でも小さくして
     # 両端に残す(視聴者が「番組の登場人物」を見失わないようにする)。
@@ -217,12 +239,12 @@ def _compose_frame(
         x = _portrait_x(side, portrait.width)
         # 上下の動きは付けない(口パク・瞬きの差分のみ)。下端アンカーで固定する。
         y = VIDEO_HEIGHT_16_9 - portrait.height - _BOTTOM_MARGIN
-        canvas.alpha_composite(portrait, (x, y))
+        character_overlay.alpha_composite(portrait, (x, y))
         if not compact:
-            _draw_nameplate(canvas, speaker=speaker, active=active, x=x)
+            _draw_nameplate(character_overlay, speaker=speaker, active=active, x=x)
 
     if current.emotion != "neutral":
-        draw = ImageDraw.Draw(canvas)
+        draw = ImageDraw.Draw(character_overlay)
         icon = {"happy": "♪", "serious": "!", "surprised": "!?"}.get(current.emotion, "")
         if icon:
             draw.ellipse((1720, 285, 1835, 400), fill=(255, 220, 80, 235))
@@ -235,7 +257,17 @@ def _compose_frame(
             draw.text((1750, 305), icon, fill=(35, 35, 45), font=icon_font)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.convert("RGB").save(output_path, format="PNG")
+    character_overlay.save(_character_overlay_path(output_path), format="PNG")
+    overlay = Image.new("RGBA", background_canvas.size, (0, 0, 0, 0))
+    heading_path = _heading_layer_path(background)
+    if heading_path is not None:
+        with Image.open(heading_path) as heading_image:
+            overlay.alpha_composite(heading_image.convert("RGBA").resize(overlay.size))
+    overlay.alpha_composite(character_overlay)
+    overlay.save(_overlay_path(output_path), format="PNG")
+    Image.alpha_composite(background_canvas, overlay).convert("RGB").save(
+        output_path, format="PNG"
+    )
     return output_path
 
 
@@ -247,11 +279,19 @@ def _build_crossfade_frames(
     section_index: int,
     duration: float,
     style: str = "fade",
+    source_background: Path | None = None,
+    target_background: Path | None = None,
+    target_overlay: Path | None = None,
+    target_character_overlay: Path | None = None,
+    target_heading_overlay: Path | None = None,
+    heading_style: str = "fade",
 ) -> list[SceneFrame]:
     """セクション境界を指定スタイルで転換する。時間は後続セリフ尺の内数。"""
     if duration <= 0:
         return []
-    with Image.open(source) as source_image, Image.open(target) as target_image:
+    source_layer = source_background or source
+    target_layer = target_background or target
+    with Image.open(source_layer) as source_image, Image.open(target_layer) as target_image:
         left = source_image.convert("RGB").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
         right = target_image.convert("RGB").resize((VIDEO_WIDTH_16_9, VIDEO_HEIGHT_16_9))
         result: list[SceneFrame] = []
@@ -287,8 +327,41 @@ def _build_crossfade_frames(
                 frame = Image.composite(right, left, mask)
             else:
                 frame = Image.blend(left, right, progress)
-            frame.save(path, "PNG")
-            result.append(SceneFrame(path=path, duration_seconds=step_duration))
+            if target_overlay is not None:
+                background_path = path.with_name(f"{path.stem}_background.png")
+                frame.save(background_path, "PNG")
+                transition_overlay_path = target_overlay
+                if target_character_overlay is not None and target_heading_overlay is not None:
+                    with (
+                        Image.open(target_character_overlay) as character_image,
+                        Image.open(target_heading_overlay) as heading_image,
+                    ):
+                        overlay = character_image.convert("RGBA").resize(frame.size)
+                        animated_heading = animate_heading_overlay(
+                            heading_image.resize(frame.size),
+                            style=heading_style,
+                            progress=progress,
+                        )
+                        overlay.alpha_composite(animated_heading)
+                    transition_overlay_path = path.with_name(f"{path.stem}_overlay.png")
+                    overlay.save(transition_overlay_path, "PNG")
+                else:
+                    with Image.open(target_overlay) as overlay_image:
+                        overlay = overlay_image.convert("RGBA").resize(frame.size)
+                Image.alpha_composite(frame.convert("RGBA"), overlay).convert("RGB").save(
+                    path, "PNG"
+                )
+                result.append(
+                    SceneFrame(
+                        path=path,
+                        duration_seconds=step_duration,
+                        background_path=background_path,
+                        overlay_path=transition_overlay_path,
+                    )
+                )
+            else:
+                frame.save(path, "PNG")
+                result.append(SceneFrame(path=path, duration_seconds=step_duration))
     return result
 
 
@@ -302,6 +375,7 @@ def build_scene_frames(
     settings: Settings,
     output_dir: Path,
     transition_style: str = "fade",
+    heading_style: str = "fade",
 ) -> list[SceneFrame]:
     """セリフ単位で話者を強調したフレーム列を作る。open素材があれば交互表示する。"""
     if not settings.CHARACTER_RENDER_ENABLED:
@@ -317,6 +391,7 @@ def build_scene_frames(
 
     frames: list[SceneFrame] = []
     previous_scene_path: Path | None = None
+    previous_background_path: Path | None = None
     previous_section_index: int | None = None
     for line, duration in zip(lines, durations, strict=True):
         section = sections[line.section_index] if line.section_index < len(sections) else {}
@@ -337,6 +412,28 @@ def build_scene_frames(
             and previous_section_index != line.section_index
             else 0.0
         )
+        initial_heading_duration = (
+            min(_TRANSITION_SECONDS, duration * 0.15)
+            if previous_scene_path is None and _heading_layer_path(background_path) is not None
+            else 0.0
+        )
+        if initial_heading_duration > 0:
+            frames.extend(
+                _build_crossfade_frames(
+                    source=closed,
+                    target=closed,
+                    output_dir=output_dir,
+                    section_index=line.section_index,
+                    duration=initial_heading_duration,
+                    style="fade",
+                    source_background=_background_layer_path(background_path),
+                    target_background=_background_layer_path(background_path),
+                    target_overlay=_overlay_path(closed),
+                    target_character_overlay=_character_overlay_path(closed),
+                    target_heading_overlay=_heading_layer_path(background_path),
+                    heading_style=heading_style,
+                )
+            )
         if previous_scene_path is not None and transition_duration > 0:
             frames.extend(
                 _build_crossfade_frames(
@@ -346,15 +443,35 @@ def build_scene_frames(
                     section_index=line.section_index,
                     duration=transition_duration,
                     style=transition_style,
+                    source_background=(
+                        _background_layer_path(previous_background_path)
+                        if previous_background_path is not None
+                        else None
+                    ),
+                    target_background=_background_layer_path(background_path),
+                    target_overlay=_overlay_path(closed),
+                    target_character_overlay=_character_overlay_path(closed),
+                    target_heading_overlay=_heading_layer_path(background_path),
+                    heading_style=heading_style,
                 )
             )
-        content_duration = max(0.0, duration - transition_duration)
+        content_duration = max(
+            0.0, duration - transition_duration - initial_heading_duration
+        )
         pose = _pose_for_section(section, line.emotion)
         open_path = _portrait_path(settings, line.speaker, line.emotion, talking=True, pose=pose)
         closed_path = _portrait_path(settings, line.speaker, line.emotion, talking=False, pose=pose)
         if open_path == closed_path or content_duration <= 0.3:
-            frames.append(SceneFrame(path=closed, duration_seconds=content_duration))
+            frames.append(
+                SceneFrame(
+                    path=closed,
+                    duration_seconds=content_duration,
+                    background_path=_background_layer_path(background_path),
+                    overlay_path=_overlay_path(closed),
+                )
+            )
             previous_scene_path = closed
+            previous_background_path = background_path
             previous_section_index = line.section_index
             continue
 
@@ -396,11 +513,14 @@ def build_scene_frames(
                 SceneFrame(
                     path=frame_path,
                     duration_seconds=clip_duration,
+                    background_path=_background_layer_path(background_path),
+                    overlay_path=_overlay_path(frame_path),
                 )
             )
             mouth_open = not mouth_open
             phase += 1
             remaining -= clip_duration
         previous_scene_path = closed
+        previous_background_path = background_path
         previous_section_index = line.section_index
     return frames

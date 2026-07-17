@@ -35,3 +35,35 @@ def test_scene_track_uses_one_concat_input_for_many_frames(tmp_path: Path, monke
     # 合計尺(0.18秒×1000)への -t クランプが指定されている。
     t_index = captured["args"].index("-t")
     assert captured["args"][t_index + 1] == "180.000"
+
+
+def test_layered_scene_zoomspans_background_before_fixed_overlay(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    frames = [
+        renderer.SceneFrame(
+            path=tmp_path / "composite.png",
+            duration_seconds=1.0,
+            background_path=tmp_path / "background.png",
+            overlay_path=tmp_path / "overlay.png",
+        )
+    ]
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_ffmpeg(_ffmpeg: str, args: list[str], *, timeout: float) -> None:
+        captured["args"] = args
+
+    monkeypatch.setattr(renderer, "_run_ffmpeg", fake_run_ffmpeg)
+    renderer._build_scene_video_track(
+        "ffmpeg",
+        frames,
+        tmp_path / "scene.mp4",
+        timeout=30,
+        ken_burns_style="zoom_in_right",
+    )
+
+    args = captured["args"]
+    assert args.count("-i") == 2
+    graph = args[args.index("-filter_complex") + 1]
+    assert graph.index("zoompan") < graph.index("overlay=0:0")
+    assert "[1:v]fps=30,format=rgba[fg]" in graph

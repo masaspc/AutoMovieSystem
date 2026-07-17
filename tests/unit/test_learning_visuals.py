@@ -72,7 +72,7 @@ def test_generate_code_quiz_and_key_point_visuals(tmp_path: Path) -> None:
 def test_heading_and_accent_variety_change_generated_visual(tmp_path: Path) -> None:
     section = {"heading": "演出テスト", "visual_type": "key_point"}
     outputs = []
-    for index, heading_style in enumerate(("banner", "underline", "side_accent")):
+    for index, heading_style in enumerate(("fade", "slide_left", "pop")):
         path = generate_section_visual(
             section,
             tmp_path / f"heading-{index}.png",
@@ -82,6 +82,24 @@ def test_heading_and_accent_variety_change_generated_visual(tmp_path: Path) -> N
         outputs.append(path.read_bytes())
 
     assert len(set(outputs)) == 3
+
+
+def test_heading_style_generates_temporal_entrance_frames(tmp_path: Path) -> None:
+    first = generate_section_visual(
+        {"heading": "導入", "visual_type": "key_point"}, tmp_path / "first.png"
+    )
+    second = generate_section_visual(
+        {"heading": "本題", "visual_type": "key_point"}, tmp_path / "second.png"
+    )
+    frames = build_background_frames(
+        {0: first, 1: second}, [0, 1], [2.0, 2.0], heading_style="slide_left"
+    )
+
+    assert len(frames) == 8
+    assert frames[0].overlay_path is not None
+    assert frames[1].overlay_path is not None
+    assert frames[0].overlay_path.read_bytes() != frames[1].overlay_path.read_bytes()
+    assert abs(sum(frame.duration_seconds for frame in frames) - 4.0) < 1e-6
 
 
 def test_background_providers_follow_the_same_contract(tmp_path: Path) -> None:

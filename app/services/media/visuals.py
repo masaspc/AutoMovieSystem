@@ -15,7 +15,12 @@ from app.services.media.renderer import (
     SceneFrame,
     find_japanese_font,
 )
-from app.services.media.variety import HEADING_STYLES, shift_accent_hue
+from app.services.media.variety import (
+    HEADING_STYLES,
+    animate_heading_overlay,
+    shift_accent_hue,
+    visual_layer_path,
+)
 
 _PALETTES = {
     "classroom": ((22, 29, 48), (69, 86, 128)),
@@ -105,11 +110,11 @@ def _draw_header(
         style = "banner"
     font = _fit_font(draw, title, max_width=1650, preferred_size=48, bold=True)
     fitted_title = _ellipsize(draw, title, font, 1650)
-    if style == "underline":
+    if style == "pop":
         draw.rounded_rectangle((90, 60, 1830, 190), radius=24, fill=(9, 13, 24, 205))
         draw.text((135, 82), fitted_title, fill="white", font=font)
         draw.rounded_rectangle((135, 161, 720, 176), radius=7, fill=(*accent, 255))
-    elif style == "side_accent":
+    elif style == "slide_left":
         draw.rounded_rectangle((90, 65, 1830, 190), radius=20, fill=(9, 13, 24, 205))
         draw.rounded_rectangle((90, 65, 118, 190), radius=12, fill=(*accent, 255))
         draw.text((150, 93), fitted_title, fill="white", font=font)
@@ -382,7 +387,6 @@ def generate_section_visual(
     draw.ellipse((-250, -400, 900, 750), fill=(*accent, 26))
     draw.ellipse((1350, 600, 2200, 1350), fill=(*accent, 22))
     title = str(section.get("visual_title") or section.get("heading") or "学習ポイント")
-    _draw_header(draw, title, accent, style=resolved_heading_style)
     visual_type = str(section.get("visual_type") or "dialogue")
     if visual_type == "cta":
         _draw_cta(draw, section, accent)
@@ -396,7 +400,18 @@ def generate_section_visual(
         _draw_bullets(draw, section, accent)
     _draw_emphasis_words(draw, section, accent)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output_path, "PNG")
+    image.save(visual_layer_path(output_path, "base"), "PNG")
+    heading_overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    _draw_header(
+        ImageDraw.Draw(heading_overlay, "RGBA"),
+        title,
+        accent,
+        style=resolved_heading_style,
+    )
+    heading_overlay.save(visual_layer_path(output_path, "heading"), "PNG")
+    Image.alpha_composite(image.convert("RGBA"), heading_overlay).convert("RGB").save(
+        output_path, "PNG"
+    )
     return output_path
 
 
@@ -434,7 +449,11 @@ def write_scene_manifest(
 
 
 def build_background_frames(
-    backgrounds: dict[int, Path], line_section_indexes: list[int], durations: list[float]
+    backgrounds: dict[int, Path],
+    line_section_indexes: list[int],
+    durations: list[float],
+    *,
+    heading_style: str = "fade",
 ) -> list[SceneFrame]:
     """立ち絵を使わない場合も、発話区間ごとに教材背景を切り替える。"""
     if len(line_section_indexes) != len(durations):
@@ -442,10 +461,50 @@ def build_background_frames(
     if not backgrounds:
         raise ValueError("背景画像がありません")
     fallback = next(iter(backgrounds.values()))
-    return [
-        SceneFrame(
-            path=backgrounds.get(section_index, fallback),
-            duration_seconds=duration,
+    frames = []
+    previous_section_index: int | None = None
+    for line_index, (section_index, duration) in enumerate(
+        zip(line_section_indexes, durations, strict=True)
+    ):
+        path = backgrounds.get(section_index, fallback)
+        base_path = visual_layer_path(path, "base")
+        heading_path = visual_layer_path(path, "heading")
+        entrance_duration = (
+            min(0.24, duration * 0.15)
+            if (
+                section_index != previous_section_index
+                and base_path.exists()
+                and heading_path.exists()
+            )
+            else 0.0
         )
-        for section_index, duration in zip(line_section_indexes, durations, strict=True)
-    ]
+        if entrance_duration > 0:
+            with Image.open(heading_path) as heading_image:
+                for step in range(1, 4):
+                    entrance_overlay = animate_heading_overlay(
+                        heading_image,
+                        style=heading_style,
+                        progress=step / 4,
+                    )
+                    entrance_path = path.parent / (
+                        f"heading_entrance_{line_index:03d}_{step}.png"
+                    )
+                    entrance_overlay.save(entrance_path, "PNG")
+                    frames.append(
+                        SceneFrame(
+                            path=path,
+                            duration_seconds=entrance_duration / 3,
+                            background_path=base_path,
+                            overlay_path=entrance_path,
+                        )
+                    )
+        frames.append(
+            SceneFrame(
+                path=path,
+                duration_seconds=max(0.0, duration - entrance_duration),
+                background_path=base_path if base_path.exists() else None,
+                overlay_path=heading_path if heading_path.exists() else None,
+            )
+        )
+        previous_section_index = section_index
+    return frames

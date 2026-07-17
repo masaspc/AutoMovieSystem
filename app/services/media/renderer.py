@@ -83,6 +83,9 @@ class SceneFrame:
 
     path: Path
     duration_seconds: float
+    # 指定時は背景だけへKen Burnsを適用し、その後に透明前景を固定overlayする。
+    background_path: Path | None = None
+    overlay_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -365,32 +368,69 @@ def _build_scene_video_track(
     if not valid_frames:
         raise RenderError("有効なscene_framesがありません")
 
+    def write_concat_list(path: Path, frame_paths: list[Path]) -> None:
+        concat_lines = ["ffconcat version 1.0"]
+        last_escaped_path = ""
+        for frame, frame_path in zip(valid_frames, frame_paths, strict=True):
+            normalized_path = str(frame_path.resolve()).replace("\\", "/")
+            escaped_path = normalized_path.replace("'", r"'\''")
+            concat_lines.append(f"file '{escaped_path}'")
+            concat_lines.append(f"duration {frame.duration_seconds:.6f}")
+            last_escaped_path = escaped_path
+        # concat demuxerの最終duration解釈差を吸収し、-tで正確な合計尺へクランプする。
+        concat_lines.append(f"file '{last_escaped_path}'")
+        path.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+
     concat_list = output.parent / "scene_frames.ffconcat"
-    concat_lines = ["ffconcat version 1.0"]
-    last_escaped_path = ""
-    for frame in valid_frames:
-        normalized_path = str(frame.path.resolve()).replace("\\", "/")
-        escaped_path = normalized_path.replace("'", r"'\''")
-        concat_lines.append(f"file '{escaped_path}'")
-        concat_lines.append(f"duration {frame.duration_seconds:.6f}")
-        last_escaped_path = escaped_path
-    # concat demuxerの最終エントリのduration解釈はFFmpegバージョンで異なる
-    # (無視される/直前durationを継承する等)。末尾にファイルをもう一度記載して
-    # 「合計尺以上」を保証したうえで、-t で正確な合計尺へクランプする。
-    concat_lines.append(f"file '{last_escaped_path}'")
-    concat_list.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+    write_concat_list(concat_list, [frame.path for frame in valid_frames])
 
     total_duration = sum(frame.duration_seconds for frame in valid_frames)
-    args = [
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_list),
+    layered = all(
+        frame.background_path is not None and frame.overlay_path is not None
+        for frame in valid_frames
+    )
+    input_args = ["-f", "concat", "-safe", "0", "-i", str(concat_list)]
+    filter_args = [
         "-vf",
         f"fps={VIDEO_FPS},{ken_burns_filter(ken_burns_style)},format=yuv420p",
+    ]
+    if layered:
+        background_list = output.parent / "scene_backgrounds.ffconcat"
+        overlay_list = output.parent / "scene_overlays.ffconcat"
+        write_concat_list(
+            background_list,
+            [frame.background_path for frame in valid_frames if frame.background_path],
+        )
+        write_concat_list(
+            overlay_list,
+            [frame.overlay_path for frame in valid_frames if frame.overlay_path],
+        )
+        input_args = [
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(background_list),
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(overlay_list),
+        ]
+        filter_args = [
+            "-filter_complex",
+            f"[0:v]fps={VIDEO_FPS},{ken_burns_filter(ken_burns_style)}[bg];"
+            f"[1:v]fps={VIDEO_FPS},format=rgba[fg];"
+            "[bg][fg]overlay=0:0:format=auto,format=yuv420p[outv]",
+            "-map",
+            "[outv]",
+        ]
+    args = [
+        "-y",
+        *input_args,
+        *filter_args,
         "-t",
         f"{total_duration:.3f}",
         "-pix_fmt",

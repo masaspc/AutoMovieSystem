@@ -5,6 +5,9 @@ from __future__ import annotations
 import colorsys
 import hashlib
 from dataclasses import dataclass
+from pathlib import Path
+
+from PIL import Image
 
 KEN_BURNS_STYLES = (
     "zoom_in_left",
@@ -13,7 +16,7 @@ KEN_BURNS_STYLES = (
     "zoom_out_right",
 )
 TRANSITION_STYLES = ("fade", "wipeleft", "slideup", "circleopen")
-HEADING_STYLES = ("banner", "underline", "side_accent")
+HEADING_STYLES = ("fade", "slide_left", "pop")
 ACCENT_HUE_SHIFTS = (-12, -6, 0, 6, 12)
 
 
@@ -49,6 +52,42 @@ def shift_accent_hue(color: tuple[int, int, int], degrees: int) -> tuple[int, in
         round(shifted_green * 255),
         round(shifted_blue * 255),
     )
+
+
+def visual_layer_path(image_path: Path, layer: str) -> Path:
+    """教材背景に対応する決定的なレイヤー画像名を返す。"""
+    return image_path.with_name(f"{image_path.stem}_{layer}.png")
+
+
+def animate_heading_overlay(
+    heading: Image.Image, *, style: str, progress: float
+) -> Image.Image:
+    """透明見出しレイヤーをfade/slide/popで決定論的に変形する。"""
+    source = heading.convert("RGBA")
+    result = Image.new("RGBA", source.size, (0, 0, 0, 0))
+    if style == "slide_left":
+        result.alpha_composite(source, (-round(source.width * (1 - progress)), 0))
+        return result
+    if style == "pop":
+        bounds = source.getchannel("A").getbbox()
+        if bounds is None:
+            return result
+        crop = source.crop(bounds)
+        scale = 0.65 + 0.35 * progress
+        resized = crop.resize(
+            (max(1, round(crop.width * scale)), max(1, round(crop.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+        center_x = (bounds[0] + bounds[2]) // 2
+        center_y = (bounds[1] + bounds[3]) // 2
+        result.alpha_composite(
+            resized,
+            (center_x - resized.width // 2, center_y - resized.height // 2),
+        )
+        return result
+    alpha = source.getchannel("A").point(lambda value: round(value * progress))
+    source.putalpha(alpha)
+    return source
 
 
 def ken_burns_filter(style: str) -> str:

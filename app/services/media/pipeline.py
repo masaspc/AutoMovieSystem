@@ -78,7 +78,7 @@ def _get_script(session: Session, project: VideoProject) -> Script:
 # prepare_assets: 背景画像生成 + Asset登録。SCRIPT_REVIEWED -> ASSETS_READY。
 # ---------------------------------------------------------------------------
 
-ASSET_SPEC_VERSION = 3
+ASSET_SPEC_VERSION = 4
 
 
 def build_prepare_assets_idempotency_key(video_project_id: str) -> str:
@@ -473,7 +473,8 @@ def _fetch_section_backgrounds(
 # v4: キーワードテロップ、グラフ、コード色分け、背景プロバイダー抽象化。
 # v5: 教材背景のピクセル幅フィットとコード抽出。
 # v6: 決定論的Ken Burns・場面転換・見出し・アクセント配色バリエーション。
-RENDER_SPEC_VERSION = 6
+# v7: Ken Burnsを背景レイヤーだけに限定し、固定前景と見出し登場を分離。
+RENDER_SPEC_VERSION = 7
 
 
 def _compute_render_input_checksum(
@@ -664,12 +665,14 @@ def render_video(
                 settings=settings,
                 output_dir=srt_path.parent / f"scenes_{input_checksum[:16]}",
                 transition_style=visual_plan.transition_style,
+                heading_style=visual_plan.heading_style,
             )
             if character_render_enabled
             else visuals.build_background_frames(
                 background_paths,
                 [line.section_index for line in speech_lines],
                 section_durations,
+                heading_style=visual_plan.heading_style,
             )
         )
 
