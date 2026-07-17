@@ -93,6 +93,12 @@ OPERATION_LIMITS: dict[str, OperationLimits] = {
     "self_review": OperationLimits(
         max_input_tokens=6_000, max_output_tokens=2_000, max_cost_micro_usd=1_000_000
     ),
+    "growth_quality_review": OperationLimits(
+        max_input_tokens=16_000, max_output_tokens=3_000, max_cost_micro_usd=1_000_000
+    ),
+    "growth_quality_rewrite": OperationLimits(
+        max_input_tokens=20_000, max_output_tokens=8_000, max_cost_micro_usd=2_000_000
+    ),
 }
 _DEFAULT_OPERATION_LIMITS = OperationLimits(
     max_input_tokens=4_000, max_output_tokens=2_000, max_cost_micro_usd=1_000_000

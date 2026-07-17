@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 import pytest
@@ -16,11 +17,18 @@ from app.models.publication import Publication
 from app.models.script import Script
 from app.models.topic import Topic
 from app.models.usage_record import UsageRecord
+from app.models.video_metric_daily import VideoMetricDaily
 from app.models.video_project import VideoProject
 from app.providers.llm.base import StructuredLLMResult
 from app.providers.llm.fake import DeterministicFakeLLMProvider
 from app.schemas.production_settings import ProductionSettings
-from app.services.scripts.generator import _build_prompts, build_idempotency_key, generate_script
+from app.services.scripts.generator import (
+    PROMPT_VERSION,
+    _build_prompts,
+    _build_recent_performance_context,
+    build_idempotency_key,
+    generate_script,
+)
 
 
 def _make_topic(db_session: Session) -> Topic:
@@ -119,6 +127,39 @@ def test_prompt_includes_duration_and_template_instructions(db_session: Session)
     assert "まとめ約12%" in system_prompt
     assert "CTA約8%" in system_prompt
     assert "ランキング形式" in system_prompt  # script_template=ranking の指示文
+
+
+def test_prompt_requires_honest_growth_composition_for_all_formats(
+    db_session: Session,
+) -> None:
+    topic = _make_topic(db_session)
+
+    short_prompt, _ = _build_prompts(topic, [], ProductionSettings.from_preset("short"))
+    standard_prompt, _ = _build_prompts(topic, [], ProductionSettings.from_preset("standard_3min"))
+
+    for prompt in (short_prompt, standard_prompt):
+        assert "訴求軸が実質的に異なり" in prompt
+        assert "title_candidates" in prompt and "ちょうど3案" in prompt
+        assert "thumbnail_textsも必ずちょうど3案" in prompt
+        assert "一対一で同じ約束" in prompt
+        assert "冒頭30秒以内に必ず提示" in prompt
+        assert "挨拶・自己紹介・チャンネル説明から始めず" in prompt
+        assert "最も強い価値・結果・意外な根拠" in prompt
+        assert "visual_instructionに具体的に記載" in prompt
+        assert "この動画固有の切り口" in prompt
+        assert "RSSの見出し・要約を順番に読み上げるのではなく" in prompt
+        assert "登録後に継続して得られる具体的な価値" in prompt
+        assert "次の動画またはシリーズ" in prompt
+
+    assert "Shortsでは1秒目" in short_prompt
+    assert "次のShortまたはシリーズ" in short_prompt
+    assert "通常動画では冒頭30秒" not in short_prompt
+    assert "通常動画では冒頭30秒" in standard_prompt
+    assert "Shortsでは1秒目" not in standard_prompt
+
+
+def test_default_idempotency_key_uses_current_prompt_version() -> None:
+    assert f":{PROMPT_VERSION}:" in build_idempotency_key("topic-1")
 
 
 def _fixed_script_payload(*, section_evidence_ids: list[str], narration: str) -> dict[str, Any]:
@@ -461,18 +502,155 @@ def _initial_system_prompt(provider: _CapturingFakeProvider) -> str:
     )
 
 
+def _add_prior_performance(
+    db_session: Session,
+    *,
+    channel_id: str,
+    key: str,
+    title: str,
+    metric_values: list[tuple[date, float, float, int]],
+    upload_status: str = "completed",
+) -> None:
+    prior_topic = Topic(
+        channel_id=channel_id,
+        title=title,
+        source_type="manual",
+        source_ref=f"performance-{key}",
+    )
+    db_session.add(prior_topic)
+    db_session.flush()
+    project = VideoProject(topic_id=prior_topic.id, status="UPLOADED_PRIVATE", generation=1)
+    db_session.add(project)
+    db_session.flush()
+    publication = Publication(
+        video_project_id=project.id,
+        youtube_video_id=f"perf-{key}"[:32],
+        title=title,
+        description="",
+        privacy_status="private",
+        idempotency_key=f"upload:performance:{key}",
+        upload_status=upload_status,
+    )
+    db_session.add(publication)
+    db_session.flush()
+    db_session.add_all(
+        [
+            VideoMetricDaily(
+                publication_id=publication.id,
+                metric_date=metric_date,
+                ctr=ctr,
+                average_view_percentage=average_view_percentage,
+                subscribers_gained=subscribers_gained,
+            )
+            for metric_date, ctr, average_view_percentage, subscribers_gained in metric_values
+        ]
+    )
+    db_session.flush()
+
+
+def test_recent_performance_context_is_channel_scoped_latest_and_limited(
+    db_session: Session,
+) -> None:
+    topic = _make_topic(db_session)
+    other_channel = Channel(name="other-channel")
+    db_session.add(other_channel)
+    db_session.flush()
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="oldest",
+        title="対象外になる古い動画",
+        metric_values=[(date(2026, 7, 1), 0.01, 0.20, 1)],
+    )
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="middle",
+        title="中位の動画",
+        metric_values=[(date(2026, 7, 2), 0.02, 0.30, 2)],
+    )
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="latest-metric",
+        title="最新値を使う動画",
+        metric_values=[
+            (date(2026, 7, 3), 0.03, 0.40, 3),
+            (date(2026, 7, 5), 0.15, 0.65, 15),
+        ],
+    )
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="recent",
+        title="新しい動画",
+        metric_values=[(date(2026, 7, 4), 0.04, 0.50, 4)],
+    )
+    _add_prior_performance(
+        db_session,
+        channel_id=other_channel.id,
+        key="foreign",
+        title="別チャンネル動画",
+        metric_values=[(date(2026, 7, 7), 0.99, 0.99, 99)],
+    )
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="incomplete",
+        title="未完了投稿",
+        metric_values=[(date(2026, 7, 6), 0.88, 0.88, 88)],
+        upload_status="failed",
+    )
+
+    context = _build_recent_performance_context(
+        db_session,
+        channel_id=topic.channel_id,
+        exclude_topic_id=topic.id,
+    )
+
+    assert "過去投稿実績(参考観測値)" in context
+    assert "因果関係や次回の成果を保証するものではなく" in context
+    assert context.count('- title="') == 3
+    assert "最新値を使う動画" in context
+    assert "CTR=15.00%" in context
+    assert "平均視聴率=65.00%" in context
+    assert "登録者増=15" in context
+    assert "対象外になる古い動画" not in context
+    assert "別チャンネル動画" not in context
+    assert "未完了投稿" not in context
+
+
+def test_recent_performance_context_is_empty_without_channel_or_metrics(
+    db_session: Session,
+) -> None:
+    topic = _make_topic(db_session)
+
+    assert _build_recent_performance_context(db_session, channel_id=None) == ""
+    assert _build_recent_performance_context(db_session, channel_id=topic.channel_id) == ""
+
+
 def test_generate_script_appends_self_review_lessons_at_prompt_end(
     db_session: Session,
 ) -> None:
     topic = _make_topic(db_session)
     action = "コード解説は1画面30秒以内に分割してください"
     _add_self_review_insights(db_session, channel_id=topic.channel_id, recommended_actions=[action])
+    _add_prior_performance(
+        db_session,
+        channel_id=topic.channel_id,
+        key="with-self-review",
+        title="実績コンテキスト付き動画",
+        metric_values=[(date(2026, 7, 13), 0.07, 0.55, 7)],
+    )
     provider = _CapturingFakeProvider()
 
     asyncio.run(generate_script(db_session, topic_id=topic.id, provider=provider))
 
     prompt = _initial_system_prompt(provider)
     expected_block = f"【過去動画の振り返りからの改善指示(必ず反映)】\n- {action}"
+    assert prompt.index("同一チャンネルの過去投稿実績") < prompt.index(
+        "過去動画の振り返りからの改善指示"
+    )
     assert prompt.endswith(expected_block)
 
 

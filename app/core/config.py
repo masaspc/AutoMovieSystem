@@ -10,7 +10,7 @@ from functools import lru_cache
 from glob import glob
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     TREND_PROVIDER: str = "fake"
     TREND_FEED_URLS: str = ""
     TREND_FETCH_LIMIT: int = 20
+
+    # トレンド候補を毎日収集し、自動レビュー合格まで制作する明示オプトイン。
+    # 人間ゲートは「privateアップロード承認」の1操作だけ残し、公開は自動化しない。
+    GROWTH_AUTOPILOT_ENABLED: bool = False
+    GROWTH_AUTOPILOT_CHANNEL_ID: str = ""
+    GROWTH_AUTOPILOT_DAILY_LIMIT: int = Field(default=1, ge=1, le=3)
 
     # --- 毎日投稿の自動化(人間の作業は「承認」だけに絞る) ---
     # 夜間自動制作: 未制作の企画(スコア上位)を毎晩この本数だけ自動レビューまで一括制作する。

@@ -1,12 +1,102 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_badge, progress_bar %}
+{% from "_macros.html" import status_badge, progress_bar, task_banner %}
 {% block title %}成長 | AutoMovie{% endblock %}
 {% block content %}
+{{ task_banner(task_id, task_label, "/growth") }}
 <div class="page-header">
   <div>
     <h2>成長(登録者{{ summary.subscriber_target }}人への道)</h2>
     <p class="page-desc">良質なコンテンツの量産と勝ちパターンの反復で登録者を積み上げます。</p>
   </div>
+</div>
+
+<div class="card">
+  <div class="page-header" style="margin-bottom: 8px;">
+    <div>
+      <h3 class="card-title">自動グロース運転</h3>
+      <p class="muted" style="margin: 0;">毎日トレンドを収集し、自動レビュー合格まで制作します。公開操作は行いません。</p>
+    </div>
+    <div class="actions">
+      {{ status_badge("有効" if autopilot_enabled else "無効") }}
+      {{ status_badge("設定完了" if autopilot_ready else "要設定") }}
+    </div>
+  </div>
+  <div class="stat-grid" style="margin-bottom: 12px;">
+    <div class="stat-card">
+      <div class="stat-label">対象チャンネル</div>
+      <div class="stat-value" style="font-size: 18px;">{{ autopilot_channel.name if autopilot_channel else "未設定" }}</div>
+      {% if autopilot_channel_id and not autopilot_channel %}<div class="stat-sub">設定IDに一致するチャンネルがありません</div>{% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">1日の上限</div>
+      <div class="stat-value">{{ autopilot_daily_limit }}<span class="muted" style="font-size: 14px;"> 本</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">候補プロバイダー</div>
+      <div class="stat-value" style="font-size: 18px;">{{ autopilot_provider }}</div>
+    </div>
+  </div>
+  {% if autopilot_ready %}
+  <form method="post" action="/growth/autopilot/run-now">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit"{{ ' disabled' if task_id else '' }}>今すぐ候補を収集</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-bottom: 0;">.env で GROWTH_AUTOPILOT_ENABLED=true と既存の GROWTH_AUTOPILOT_CHANNEL_ID を明示すると開始できます。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 class="card-title">最小チェック承認キュー ({{ approval_queue | length }}件)</h3>
+  <p class="muted" style="margin-top: 0;">
+    自動レビューを通過した動画だけを表示します。タイトル・サムネイル・注意点・根拠・動画を確認し、1回の承認でYouTubeへ<strong>非公開</strong>アップロードします。
+  </p>
+  {% for item in approval_queue %}
+  <article style="padding: 16px 0; border-top: 1px solid var(--border);">
+    <div style="display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 18px; align-items: start;">
+      <div>
+        {% if item.thumbnail_url %}
+        <img src="{{ item.thumbnail_url }}" alt="選択済みサムネイル" style="display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px;" />
+        {% else %}
+        <div class="empty" style="aspect-ratio: 16 / 9; display: grid; place-items: center;">選択済みサムネイルなし</div>
+        {% endif %}
+        <p style="margin: 8px 0 0;"><a href="{{ item.preview_url }}" target="_blank">▶ 動画をプレビュー</a></p>
+      </div>
+      <div>
+        <h4 style="font-size: 18px; margin: 0 0 6px;">{{ item.video_title }}</h4>
+        <p class="muted" style="margin: 0 0 10px;">チャンネル: {{ item.channel_name }} / 企画: {{ item.topic_title }}</p>
+        <p style="margin: 0 0 8px;">
+          <span class="badge badge-info">AI開示: true</span>
+          <span class="badge badge-warning">公開範囲: private</span>
+          {{ status_badge(item.growth_readiness) }}
+        </p>
+        <p style="margin: 0 0 8px;"><strong>要確認:</strong> {{ item.attention_summary }}</p>
+        <p style="margin: 0 0 8px;">
+          <strong>レビュー:</strong>
+          {% for reviewer_type, score in item.review_scores %}
+          <span class="badge badge-success">{{ reviewer_type }} {{ score if score is not none else "合格" }}</span>
+          {% else %}
+          <span class="muted">スコアなし</span>
+          {% endfor %}
+        </p>
+        <div style="margin-bottom: 12px;">
+          <strong>根拠:</strong>
+          {% for label, url in item.evidence_links %}
+          <a href="{{ url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{{ label }}</a>{% if not loop.last %} / {% endif %}
+          {% else %}
+          <span class="muted">リンクなし</span>
+          {% endfor %}
+        </div>
+        <form method="post" action="/growth/approval-queue/{{ item.project_id }}/approve-private-upload">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit"{{ ' disabled' if task_id else '' }}>承認してYouTubeへ非公開アップロード</button>
+        </form>
+      </div>
+    </div>
+  </article>
+  {% else %}
+  <div class="empty">承認待ち動画はありません。自動運転または量産バッチで候補を仕込めます。</div>
+  {% endfor %}
 </div>
 
 <div class="stat-grid">

@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.workers.tasks.publishing",
         "app.workers.tasks.analytics",
         "app.workers.tasks.feedback",
+        "app.workers.tasks.growth",
     ],
 )
 
@@ -58,5 +59,11 @@ celery_app.conf.beat_schedule = {
     "auto-produce-daily": {
         "task": "production.auto_produce_daily",
         "schedule": crontab(hour=3, minute=0),
+    },
+    # 明示オプトインのトレンド自動収集。制作は自動レビューまでで止まり、
+    # privateアップロードには成長画面での人間承認が必要。
+    "run-daily-growth-autopilot": {
+        "task": "growth.run_daily_autopilot",
+        "schedule": crontab(hour=1, minute=0),
     },
 }

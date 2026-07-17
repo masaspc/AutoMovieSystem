@@ -110,6 +110,7 @@ def _generate_script_content(
         "title_candidates": [
             f"知らないと損する話 #{suffix}",
             f"3分でわかる完全ガイド #{suffix}",
+            f"初心者が避けたい3つの落とし穴 #{suffix}",
         ],
         "target_audience": "初めてこのテーマに触れる視聴者",
         "viewer_problem": "何から手を付ければよいか分からず時間を浪費している",
@@ -288,6 +289,68 @@ def _self_review(
     }
 
 
+def _growth_quality_review(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict[str, Any]:
+    """Return a low first-pass score until packaging has three complete alternatives."""
+    del seed, operation, schema
+    try:
+        payload = json.loads(user_prompt)
+        script = payload.get("script", {})
+    except (json.JSONDecodeError, AttributeError):
+        script = {}
+    title_count = len({str(item).strip() for item in script.get("title_candidates", []) if item})
+    thumbnail_count = len({str(item).strip() for item in script.get("thumbnail_texts", []) if item})
+    complete_packaging = title_count >= 3 and thumbnail_count >= 3
+    overall = 86 if complete_packaging else 68
+    component_floor = 78 if complete_packaging else 62
+    return {
+        "appeal_score": overall,
+        "engagement_score": overall - 2,
+        "satisfaction_score": component_floor + 4,
+        "originality_score": component_floor,
+        "trust_score": component_floor + 6,
+        "overall_score": overall,
+        "recommended_title_index": 1 if title_count >= 2 else 0,
+        "recommended_thumbnail_index": 2 if thumbnail_count >= 3 else 0,
+        "strengths": ["結論と視聴者の便益が明確です。"],
+        "issues": [],
+        "revision_instructions": (
+            []
+            if complete_packaging
+            else ["タイトルとサムネイルを異なる切り口で3案ずつ作成してください。"]
+        ),
+        "human_check_reasons": [],
+    }
+
+
+def _growth_quality_rewrite(
+    seed: bytes, operation: str, user_prompt: str, schema: type[BaseModel]
+) -> dict[str, Any]:
+    """Improve packaging deterministically while leaving every Evidence reference untouched."""
+    del seed, operation
+    try:
+        payload = json.loads(user_prompt)
+        data = payload["script"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return _generate_script_content(b"growth-quality-rewrite", "generate_script", "", schema)
+
+    data["title_candidates"] = [
+        "結論からわかる実践ガイド",
+        "初心者が避けたい3つの落とし穴",
+        "今日から使える最短ステップ",
+    ]
+    data["thumbnail_texts"] = ["今すぐ確認", "3つの盲点", "結論はこれ"]
+    data["hook"] = "最後まで見ると、よくある失敗を避ける具体的な一歩が分かります。"
+    data["call_to_action"] = (
+        "役立ったポイントをコメントで教えてください。次の実践編も見逃さないよう登録してください。"
+    )
+    for section in data.get("sections", []):
+        narration = str(section.get("narration") or "")
+        section["narration"] = f"{narration} ここでは具体例と判断基準を確認します。"
+    return data
+
+
 # content_review用の誇張・断定NGワード(inspector.py DEFAULT_NG_WORDSと同趣旨)。
 _CONTENT_REVIEW_NG_WORDS: tuple[str, ...] = (
     "絶対に儲かる",
@@ -321,6 +384,8 @@ _GENERATORS: dict[str, Generator] = {
     "generate_curriculum": _generate_curriculum,
     "classify_comment": _classify_comment,
     "self_review": _self_review,
+    "growth_quality_review": _growth_quality_review,
+    "growth_quality_rewrite": _growth_quality_rewrite,
     "review_content": _review_content,
 }
 

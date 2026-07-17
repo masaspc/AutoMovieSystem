@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -9,8 +11,11 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.evidence import Evidence
 from app.models.job_run import JobRun
+from app.models.publication import Publication
 from app.models.script import Script
 from app.models.topic import Topic
+from app.models.video_metric_daily import VideoMetricDaily
+from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
 from app.schemas.production_settings import ProductionSettings
 from app.schemas.script_content import ScriptContent
@@ -19,11 +24,12 @@ from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
 from app.services.scripts.duration import duration_within_range, estimate_duration_seconds
 from app.services.scripts.outro import append_outro_section
+from app.services.scripts.variety import VarietyPlan, pick_variety_plan, variety_prompt_block
 from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v6_hook_cta_outro"
+PROMPT_VERSION = "script_v8_variety"
 OPERATION = "generate_script"
 REPAIR_PROMPT_VERSION = "script_repair_v2"
 REPAIR_OPERATION = "repair_script_duration"
@@ -113,10 +119,47 @@ def _template_instruction(production_settings: ProductionSettings) -> str:
     return f"台本の構成は次の方針に従ってください: {instruction}"
 
 
+def _growth_composition_instruction(production_settings: ProductionSettings) -> str:
+    """視聴者への約束を正直に届け、視聴継続と次回視聴につなげる構成指示。"""
+    shared = (
+        "title_candidatesは、単なる言い換えではなく訴求軸が実質的に異なり、"
+        "動画内容と正確に一致するタイトルを必ずちょうど3案出力してください。"
+        "thumbnail_textsも必ずちょうど3案出力し、同じ添字のtitle_candidatesと"
+        "一対一で同じ約束を伝えるパンチラインにしてください。釣り・誇張・根拠のない"
+        "成果保証は禁止です。採用するタイトルとサムネイルが約束した答え・結果・根拠を"
+        "冒頭30秒以内に必ず提示し、その後の本編で十分に説明してください。"
+        "挨拶・自己紹介・チャンネル説明から始めず、最も強い価値・結果・意外な根拠を"
+        "先に出してください。各sectionでは、visual_type、図解、画面上の要点、比較、"
+        "問いかけ等のうち少なくとも1つを前sectionから計画的に変え、その変化を"
+        "visual_instructionに具体的に記載してください。"
+        "この動画固有の切り口を1つ定めてhookまたは冒頭sectionで明示し、Evidenceや"
+        "RSSの見出し・要約を順番に読み上げるのではなく、独自の比較・因果整理・具体例で"
+        "視聴者向けに再構成してください。出典にない事実は作らないでください。"
+        "call_to_actionは『登録してください』だけの一般的なお願いにせず、登録後に継続して"
+        "得られる具体的な価値を1つ示し、今回の内容から自然につながる次の動画または"
+        "シリーズを具体的に案内してください。"
+    )
+    if production_settings.video_format == "short":
+        return shared + (
+            "Shortsでは1秒目の一文から結論・変化・意外性のいずれかを見せ、タイトルと"
+            "サムネイルの約束を最初の数秒で回収してください。短いsectionごとに映像・"
+            "情報の見せ方を切り替え、前置きや反復を入れないでください。CTAは価値提供後の"
+            "最後に、登録理由と次のShortまたはシリーズを結ぶ短い1文にしてください。"
+        )
+    return shared + (
+        "通常動画では冒頭30秒で、約束した結果または重要な根拠を実際に見せたうえで、"
+        "続きを見る理由となる道筋を短く示してください。最も価値の高い説明を後半まで"
+        "温存せず、各sectionの境界で映像・問い・具体例などのパターンを意図的に"
+        "切り替えてください。CTAは本編の価値を届け切った後に置き、次に見るべき"
+        "動画またはシリーズへ論理的につないでください。"
+    )
+
+
 def _build_prompts(
     topic: Topic,
     evidence_list: list[Evidence],
     production_settings: ProductionSettings | None = None,
+    variety_plan: VarietyPlan | None = None,
 ) -> tuple[str, str]:
     settings = get_settings()
     production_settings = production_settings or ProductionSettings()
@@ -154,6 +197,7 @@ def _build_prompts(
         "「絶対に儲かる」「必ず成功する」等の誇張・断定表現は使用しないでください。"
         f"{duration_instruction}"
         f"{_template_instruction(production_settings)}"
+        f"{_growth_composition_instruction(production_settings)}"
         f"トーンは「{production_settings.tone}」を維持してください。"
         f"{dialogue_instruction}"
         f"各sectionには映像演出も設計してください。visual_typeは{visual_types}から選び、"
@@ -163,7 +207,7 @@ def _build_prompts(
         "chart_title/chart_labels/chart_valuesを同じ要素数で設定してください。"
         "character_layoutは教材が主役のcode/diagramではsmall_leftまたはsmall_right、quizではhiddenを優先し、"
         "背景や動きは説明に必要なものだけを指定してください。"
-        "さらに、サムネイル用のパンチラインを3案 thumbnail_texts に出力してください。"
+        "さらに、サムネイル用のパンチラインをちょうど3案 thumbnail_texts に出力してください。"
         "各パンチラインは6〜12文字程度で、疑問形・数字・断定のいずれかの型にしてください"
         "(例:「えっ、5分で?」「初心者の9割が誤解」)。各案では最も引きになる語句1つを"
         "《》で囲んでください(例:「えっ、《5分》で?」)。サムネイル描画時にその部分だけ"
@@ -171,7 +215,13 @@ def _build_prompts(
         "hookは動画の冒頭5秒で視聴者を掴む最重要パートです。挨拶や自己紹介から始めず、"
         "「この動画で得られる結論・成果を先に見せる」1〜2文にしてください"
         "(例: 「この動画を見終わる頃には、リストと辞書を迷わず使い分けられるようになります」)。"
+        "通常尺では2〜3分ごとに、コーナー挿入・視点切替・テンポ変化のいずれかで"
+        "話のパターンを転換してください。短尺では尺に応じて少なくとも1回、見せ方を"
+        "切り替えてください。視聴者がコメントで答えられる具体的な問いかけを、台本内に"
+        "必ず1箇所以上入れてください。"
     )
+    if variety_plan is not None:
+        system_prompt += variety_prompt_block(variety_plan)
     evidence_lines = "\n".join(
         f"- id={e.id} claim={e.claim} source={e.source_url}" for e in evidence_list
     )
@@ -200,6 +250,74 @@ def _build_self_review_lessons_context(session: Session, *, channel_id: str) -> 
         return ""
     lesson_lines = "\n".join(f"- {lesson.recommended_action}" for lesson in lessons)
     return f"\n\n【過去動画の振り返りからの改善指示(必ず反映)】\n{lesson_lines}"
+
+
+def _build_recent_performance_context(
+    session: Session,
+    *,
+    channel_id: str | None,
+    exclude_topic_id: str | None = None,
+    limit: int = 3,
+) -> str:
+    """同一チャンネルの完了済み投稿から、最新日の日次観測値だけを返す。"""
+    if not channel_id or limit <= 0:
+        return ""
+
+    latest_metric_dates = (
+        session.query(
+            VideoMetricDaily.publication_id.label("publication_id"),
+            func.max(VideoMetricDaily.metric_date).label("metric_date"),
+        )
+        .group_by(VideoMetricDaily.publication_id)
+        .subquery()
+    )
+    query = (
+        session.query(Publication.title, VideoMetricDaily)
+        .select_from(Publication)
+        .join(VideoProject, VideoProject.id == Publication.video_project_id)
+        .join(Topic, Topic.id == VideoProject.topic_id)
+        .join(
+            latest_metric_dates,
+            latest_metric_dates.c.publication_id == Publication.id,
+        )
+        .join(
+            VideoMetricDaily,
+            (VideoMetricDaily.publication_id == Publication.id)
+            & (VideoMetricDaily.metric_date == latest_metric_dates.c.metric_date),
+        )
+        .filter(
+            Topic.channel_id == channel_id,
+            Publication.upload_status == "completed",
+        )
+    )
+    if exclude_topic_id:
+        query = query.filter(Topic.id != exclude_topic_id)
+    rows = (
+        query.order_by(
+            VideoMetricDaily.metric_date.desc(),
+            Publication.published_at.desc(),
+            Publication.created_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    if not rows:
+        return ""
+
+    observations = []
+    for title, metric in rows:
+        single_line_title = " ".join(title.split())
+        observations.append(
+            f'- title="{single_line_title}" | CTR={metric.ctr:.2%} | '
+            f"平均視聴率={metric.average_view_percentage:.2%} | "
+            f"登録者増={metric.subscribers_gained}"
+        )
+    return (
+        "\n\n【同一チャンネルの過去投稿実績(参考観測値)】\n"
+        "以下は各投稿の最新取得日における過去の観測値です。因果関係や次回の成果を"
+        "保証するものではなく、断定せず企画判断の参考としてのみ扱ってください。\n"
+        + "\n".join(observations)
+    )
 
 
 def _collect_evidence_ids(content: ScriptContent) -> set[str]:
@@ -261,10 +379,20 @@ async def generate_script(
 
     production_settings = production_settings or ProductionSettings()
     settings_checksum = production_settings.checksum()
+    variety_plan = pick_variety_plan(
+        topic_id, template=production_settings.script_template
+    )
 
     evidence_list = session.query(Evidence).filter(Evidence.topic_id == topic_id).all()
-    system_prompt, user_prompt = _build_prompts(topic, evidence_list, production_settings)
+    system_prompt, user_prompt = _build_prompts(
+        topic, evidence_list, production_settings, variety_plan
+    )
     system_prompt += build_series_script_context(session, topic_id)
+    system_prompt += _build_recent_performance_context(
+        session,
+        channel_id=topic.channel_id,
+        exclude_topic_id=topic.id,
+    )
     system_prompt += _build_self_review_lessons_context(session, channel_id=topic.channel_id)
     idempotency_key = build_idempotency_key(
         topic_id, PROMPT_VERSION, settings_checksum, regeneration_key
@@ -362,6 +490,7 @@ async def generate_script(
             "estimated_duration_seconds": estimated_seconds,
             "production_settings_checksum": settings_checksum,
             "production_settings": production_settings.model_dump(),
+            "variety_plan": asdict(variety_plan),
         }
 
         max_version = (
