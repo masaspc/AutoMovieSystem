@@ -5,13 +5,18 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.models.channel import Channel
 from app.models.evidence import VERIFICATION_STATUSES, Evidence
 from app.models.topic import SOURCE_TYPES, Topic
 from app.models.video_project import VideoProject
 from app.schemas.production_settings import ProductionSettings
 from app.services.orchestration import _ensure_dummy_evidence
-from app.services.trends.service import instant_videoize, trend_source_ref
+from app.services.trends.service import (
+    instant_videoize,
+    resolve_trend_feed_urls,
+    trend_source_ref,
+)
 
 
 def _make_channel(db_session: Session) -> Channel:
@@ -188,3 +193,21 @@ def test_existing_trend_evidence_prevents_dummy_evidence(db_session: Session) ->
 
     assert selected.id == existing.id
     assert db_session.query(Evidence).filter(Evidence.topic_id == topic.id).count() == 1
+
+
+def test_channel_trend_feeds_override_global_and_empty_policy_falls_back() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        TREND_FEED_URLS="https://global.example/rss,https://global.example/second",
+    )
+    channel = Channel(
+        name="finance",
+        editorial_policy={"trend_feed_urls": ["https://channel.example/rss"]},
+    )
+    assert resolve_trend_feed_urls(channel, settings) == ["https://channel.example/rss"]
+
+    channel.editorial_policy = {"trend_feed_urls": []}
+    assert resolve_trend_feed_urls(channel, settings) == [
+        "https://global.example/rss",
+        "https://global.example/second",
+    ]

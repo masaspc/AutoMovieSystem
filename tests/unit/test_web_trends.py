@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.channel import Channel
 from app.models.topic import Topic
+from app.providers.trends.fake import FakeTrendProvider
 
 
 @dataclass
@@ -47,6 +48,29 @@ def test_trends_page_without_channel_shows_guidance(client: TestClient) -> None:
     assert response.status_code == 200
     assert "動画化先のチャンネルがありません" in response.text
     assert "disabled" in response.text
+
+
+def test_trends_page_resolves_feed_for_selected_channel(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _make_channel(db_session, "全体設定")
+    selected = _make_channel(db_session, "金融")
+    selected.editorial_policy = {"trend_feed_urls": ["https://finance.example/rss"]}
+    db_session.commit()
+    captured: list[str] = []
+
+    def fake_factory(settings):  # type: ignore[no-untyped-def]
+        captured.append(settings.TREND_FEED_URLS)
+        return FakeTrendProvider()
+
+    monkeypatch.setattr("app.web.trends_page.get_trend_provider", fake_factory)
+    response = client.get(f"/trends?channel_id={selected.id}")
+    assert response.status_code == 200
+    assert captured == ["https://finance.example/rss"]
+    assert f'value="{selected.id}" selected' in response.text
+    assert first.id != selected.id
 
 
 def test_videoize_uses_selected_channel_and_dispatches_production(

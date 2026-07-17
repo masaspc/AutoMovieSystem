@@ -15,7 +15,11 @@ from app.models.channel import Channel
 from app.models.topic import Topic
 from app.models.video_project import VideoProject
 from app.providers.trends.factory import get_trend_provider
-from app.services.trends.service import instant_videoize, trend_source_ref
+from app.services.trends.service import (
+    instant_videoize,
+    settings_for_channel_trends,
+    trend_source_ref,
+)
 from app.workers.celery_app import celery_app
 from app.workers.tasks.production import produce_video_task
 
@@ -60,15 +64,17 @@ def run_daily_autopilot() -> dict[str, object]:
 
     validation_session = SessionLocal()
     try:
-        if validation_session.get(Channel, channel_id) is None:
+        channel = validation_session.get(Channel, channel_id)
+        if channel is None:
             logger.warning("growth_autopilot_channel_not_found", channel_id=channel_id)
             return _skipped("channel_not_found")
+        provider_settings = settings_for_channel_trends(channel, settings)
     finally:
         validation_session.close()
 
     fetch_limit = max(settings.GROWTH_AUTOPILOT_DAILY_LIMIT, settings.TREND_FETCH_LIMIT)
     try:
-        provider = get_trend_provider(settings)
+        provider = get_trend_provider(provider_settings)
         items = asyncio.run(provider.fetch_latest(limit=fetch_limit))
     except Exception as exc:  # noqa: BLE001 - beatを停止せず次回収集へ回す
         logger.warning(

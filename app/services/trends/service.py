@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.logging import get_logger
 from app.models.channel import Channel
 from app.models.evidence import Evidence
@@ -25,6 +26,7 @@ from app.providers.trends.base import (
     truncate_trend_text,
 )
 from app.schemas.production_settings import ProductionSettings
+from app.services.channels.policy import get_editorial_policy
 from app.services.orchestration import (
     _advance_status,  # noqa: SLF001 - オーケストレーションの該当ステップを再利用する
     _get_or_create_video_project,  # noqa: SLF001
@@ -36,6 +38,20 @@ logger = get_logger(__name__)
 TREND_PRODUCTION_SETTINGS = ProductionSettings(
     preset="short", script_template="news_commentary", bgm_mood="serious"
 )
+
+
+def resolve_trend_feed_urls(channel: Channel | None, settings: Settings) -> list[str]:
+    """チャンネル固有フィードを優先し、空ならグローバル設定へ戻す。"""
+    policy_urls = get_editorial_policy(channel).trend_feed_urls
+    if policy_urls:
+        return policy_urls
+    return [url.strip() for url in settings.TREND_FEED_URLS.split(",") if url.strip()]
+
+
+def settings_for_channel_trends(channel: Channel | None, settings: Settings) -> Settings:
+    """既存Providerへ解決済みフィードを渡すための設定コピーを作る。"""
+    feed_urls = resolve_trend_feed_urls(channel, settings)
+    return settings.model_copy(update={"TREND_FEED_URLS": ",".join(feed_urls)})
 
 
 def trend_source_ref(url: str) -> str:
@@ -68,7 +84,8 @@ def instant_videoize(
     source: str,
 ) -> Topic:
     """トレンド記事からTopic+Evidence+設定済みVideoProjectを作成する(URL単位で冪等)。"""
-    if session.get(Channel, channel_id) is None:
+    channel = session.get(Channel, channel_id)
+    if channel is None:
         raise ValueError(f"Channel not found: {channel_id}")
 
     normalized_url = normalize_trend_url(url)
@@ -121,7 +138,15 @@ def instant_videoize(
     )
 
     project = _get_or_create_video_project(session, topic_id=topic.id)
-    project.production_settings = TREND_PRODUCTION_SETTINGS.model_dump()
+    policy_defaults = get_editorial_policy(channel).default_production_settings
+    try:
+        trend_settings = ProductionSettings.model_validate(
+            {**TREND_PRODUCTION_SETTINGS.model_dump(), **policy_defaults}
+        )
+    except ValueError:
+        logger.warning("channel_default_production_settings_invalid", channel_id=channel.id)
+        trend_settings = TREND_PRODUCTION_SETTINGS
+    project.production_settings = trend_settings.model_dump()
     _advance_status(project, "TOPIC_SCORED")
     _advance_status(project, "RESEARCH_READY")
     session.flush()

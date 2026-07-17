@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}トレンド | AutoMovie{% endblock %}
 {% block content %}
+{% if channels %}
+<form method="get" action="/trends" class="card" style="margin-bottom: 18px;">
+  <div class="field">
+    <label>取得フィードのチャンネル</label>
+    <select name="channel_id" onchange="this.form.submit()">
+      {% for channel in channels %}
+      <option value="{{ channel.id }}"{{ ' selected' if selected_channel and channel.id == selected_channel.id else '' }}>{{ channel.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <noscript><button type="submit">フィードを切り替える</button></noscript>
+</form>
+{% endif %}
 <div class="page-header">
   <div>
     <h2>トレンド</h2>
@@ -38,7 +51,7 @@
         <select name="channel_id" required{{ ' disabled' if not channels else '' }}>
           <option value="" selected disabled>選択してください</option>
           {% for channel in channels %}
-          <option value="{{ channel.id }}">{{ channel.name }}</option>
+            <option value="{{ channel.id }}"{{ ' selected' if selected_channel and channel.id == selected_channel.id else '' }}>{{ channel.name }}</option>
           {% endfor %}
         </select>
       </div>
