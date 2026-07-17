@@ -92,6 +92,15 @@ def _make_ready_project(db_session: Session, tmp_path: Path) -> VideoProject:
     return project
 
 
+def _set_disclaimer(db_session: Session, project: VideoProject, text: str) -> None:
+    topic = db_session.get(Topic, project.topic_id)
+    assert topic is not None
+    channel = db_session.get(Channel, topic.channel_id)
+    assert channel is not None
+    channel.editorial_policy = {"disclaimer_text": text}
+    db_session.flush()
+
+
 def test_upload_missing_approval_is_rejected(db_session: Session, tmp_path: Path) -> None:
     project = _make_project(db_session, tmp_path)
     _add_passing_reviews(db_session, project)
@@ -151,6 +160,47 @@ def test_successful_upload_transitions_state_and_records_publication(
     # description にidempotencyマーカーが埋め込まれていること。
     stored = provider.store.videos[publication.youtube_video_id]
     assert uploader.build_idempotency_marker(publication.idempotency_key) in stored.description
+
+
+def test_with_disclaimer_appends_once() -> None:
+    disclaimer = "本動画は情報提供を目的とし、投資助言ではありません。"
+    description = uploader._with_disclaimer("説明文", disclaimer)
+
+    assert description == f"説明文\n\n{disclaimer}"
+    assert uploader._with_disclaimer(description, disclaimer) == description
+
+
+def test_upload_inserts_channel_disclaimer_once(db_session: Session, tmp_path: Path) -> None:
+    project = _make_ready_project(db_session, tmp_path)
+    disclaimer = "本動画は情報提供を目的とし、投資助言ではありません。"
+    _set_disclaimer(db_session, project, disclaimer)
+    provider = FakeYouTubeProvider()
+
+    publication = asyncio.run(
+        uploader.upload_video(db_session, video_project_id=project.id, provider=provider)
+    )
+
+    stored = provider.store.videos[publication.youtube_video_id]
+    assert stored.description.count(disclaimer) == 1
+    assert publication.description.count(disclaimer) == 1
+
+
+def test_upload_fails_closed_when_required_disclaimer_is_missing(
+    db_session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_ready_project(db_session, tmp_path)
+    disclaimer = "本動画は情報提供を目的とし、投資助言ではありません。"
+    _set_disclaimer(db_session, project, disclaimer)
+    monkeypatch.setattr(uploader, "_with_disclaimer", lambda description, _text: description)
+    provider = FakeYouTubeProvider()
+
+    with pytest.raises(uploader.UploadPreconditionError, match="disclaimer"):
+        asyncio.run(
+            uploader.upload_video(db_session, video_project_id=project.id, provider=provider)
+        )
+
+    assert db_session.query(Publication).count() == 0
+    assert provider.store.videos == {}
 
 
 def test_upload_twice_creates_only_one_publication_no_duplicate_call(

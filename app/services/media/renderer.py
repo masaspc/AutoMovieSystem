@@ -75,6 +75,7 @@ class RenderInputs:
     # BGM・SEのミックス指定(Phase A: 音響)。Noneなら従来どおり声のみ。
     audio_mix: AudioMixSpec | None = None
     visual_variety_plan: VisualVarietyPlan | None = None
+    disclaimer_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -142,10 +143,11 @@ def generate_endcard_image(
     *,
     title: str,
     channel_name: str,
+    disclaimer_text: str = "",
     width: int = VIDEO_WIDTH_16_9,
     height: int = VIDEO_HEIGHT_16_9,
 ) -> Path:
-    """エンドカード静止画(タイトル+チャンネル名)を生成する。
+    """エンドカード静止画(タイトル+チャンネル名+任意の免責文)を生成する。
 
     日本語フォントが見つからない環境(CI Linux等)ではデフォルトフォントに
     フォールバックし、描画に失敗してもエンドカード自体の生成は継続する。
@@ -177,6 +179,39 @@ def generate_endcard_image(
             fill=(180, 180, 200),
             font=channel_font,
         )
+
+        disclaimer = disclaimer_text.strip()
+        if disclaimer:
+            disclaimer_font = (
+                ImageFont.truetype(font_path, 26) if font_path else ImageFont.load_default()
+            )
+            max_width = width - 240
+            lines: list[str] = []
+            current = ""
+            for character in disclaimer:
+                candidate = current + character
+                bbox = draw.textbbox((0, 0), candidate, font=disclaimer_font)
+                if current and bbox[2] - bbox[0] > max_width:
+                    lines.append(current)
+                    current = character
+                else:
+                    current = candidate
+            if current:
+                lines.append(current)
+            lines = lines[:2]
+            if len(lines) == 2 and "".join(lines) != disclaimer:
+                lines[1] = lines[1].rstrip("…") + "…"
+            line_height = 36
+            start_y = height - 70 - line_height * len(lines)
+            for index, line in enumerate(lines):
+                bbox = draw.textbbox((0, 0), line, font=disclaimer_font)
+                line_width = bbox[2] - bbox[0]
+                draw.text(
+                    ((width - line_width) / 2, start_y + index * line_height),
+                    line,
+                    fill=(165, 165, 180),
+                    font=disclaimer_font,
+                )
     except Exception as exc:  # noqa: BLE001 - フォント未対応文字等で描画失敗しても生成は継続する
         logger.debug("background_text_draw_skipped", error=str(exc))
 
@@ -639,7 +674,12 @@ def _render_impl(
 
     if inputs.endcard_enabled:
         endcard_image = work_dir / "endcard.png"
-        generate_endcard_image(endcard_image, title=inputs.title, channel_name=inputs.channel_name)
+        generate_endcard_image(
+            endcard_image,
+            title=inputs.title,
+            channel_name=inputs.channel_name,
+            disclaimer_text=inputs.disclaimer_text,
+        )
         endcard_video = work_dir / "endcard.mp4"
         _build_endcard_track(
             ffmpeg_path,

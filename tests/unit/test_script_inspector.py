@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.models.script import Script
 from app.services.scripts.inspector import (
     SEVERITY_BLOCKING,
@@ -148,12 +150,13 @@ def test_evidence_id_in_manifest_suppresses_number_findings() -> None:
     assert "unsupported_number" not in codes
 
 
-def test_prohibited_expression_is_blocking() -> None:
+@pytest.mark.parametrize("expression", ["絶対に儲かる", "必ず儲かる", "絶対に上がる", "損しない"])
+def test_prohibited_expression_is_blocking(expression: str) -> None:
     body = _base_body(
         sections=[
             {
                 "heading": "本編",
-                "narration": "この方法なら絶対に儲かる話です。",
+                "narration": f"この方法なら{expression}という説明です。",
                 "visual_instruction": "表示",
                 "evidence_ids": [],
             }

@@ -27,12 +27,15 @@ from app.core.config import get_settings
 from app.core.logging import get_logger, mask_secrets_in_text
 from app.models.approval import Approval
 from app.models.asset import Asset
+from app.models.channel import Channel
 from app.models.job_run import JobRun
 from app.models.publication import Publication
 from app.models.review import Review
 from app.models.script import Script
+from app.models.topic import Topic
 from app.models.video_project import VideoProject
 from app.providers.youtube.base import UploadRequest, YouTubeProvider
+from app.services.channels.policy import get_editorial_policy
 from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.media.characters import character_credits
 from app.services.media.dialogue import dialogue_script_enabled, extract_speech_lines
@@ -116,6 +119,21 @@ def _with_bgm_credit(description: str, session: Session, video_project_id: str) 
     return f"{description.rstrip()}{separator}Music: {credit}"
 
 
+def _with_disclaimer(description: str, disclaimer_text: str) -> str:
+    """チャンネル免責文を概要欄へ重複なく追記する。"""
+    disclaimer = disclaimer_text.strip()
+    if not disclaimer or disclaimer in description:
+        return description
+    separator = "\n\n" if description.strip() else ""
+    return f"{description.rstrip()}{separator}{disclaimer}"
+
+
+def _project_disclaimer_text(session: Session, project: VideoProject) -> str:
+    topic = session.get(Topic, project.topic_id)
+    channel = session.get(Channel, topic.channel_id) if topic is not None else None
+    return get_editorial_policy(channel).disclaimer_text
+
+
 def _get_video_project(session: Session, video_project_id: str) -> VideoProject:
     project = session.get(VideoProject, video_project_id)
     if project is None:
@@ -141,7 +159,13 @@ def _latest_review(session: Session, video_project_id: str, reviewer_type: str) 
     )
 
 
-def _validate_upload_preconditions(session: Session, project: VideoProject) -> None:
+def _validate_upload_preconditions(
+    session: Session,
+    project: VideoProject,
+    *,
+    description: str | None = None,
+    disclaimer_text: str = "",
+) -> None:
     """前提検証(fail-closed)。1つでも欠ければ `UploadPreconditionError` を送出する。"""
     reasons: list[str] = []
 
@@ -162,6 +186,10 @@ def _validate_upload_preconditions(session: Session, project: VideoProject) -> N
     )
     if approved is None:
         reasons.append("human approval required but missing")
+
+    disclaimer = disclaimer_text.strip()
+    if disclaimer and (description is None or disclaimer not in description):
+        reasons.append("channel disclaimer missing from upload description")
 
     if not project.checksum or not project.output_path:
         reasons.append("checksum or output path missing (render not completed)")
@@ -192,6 +220,11 @@ def _get_or_create_publication(
         .one_or_none()
     )
     if existing is not None:
+        if existing.upload_status != "completed":
+            existing.title = title
+            existing.description = description
+            existing.tags = tags
+            existing.privacy_status = privacy_status
         return existing
 
     publication = Publication(
@@ -332,11 +365,18 @@ async def upload_video(
     description = _with_voicevox_credits(str(body.get("description") or ""), body)
     description = _with_auto_chapters(description, script.source_manifest or {})
     description = _with_bgm_credit(description, session, video_project_id)
+    disclaimer_text = _project_disclaimer_text(session, project)
+    description = _with_disclaimer(description, disclaimer_text)
     tags = list(body.get("tags") or [])
     privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
 
     async def _do_upload(_job_run: JobRun) -> Publication:
-        _validate_upload_preconditions(session, project)
+        _validate_upload_preconditions(
+            session,
+            project,
+            description=description,
+            disclaimer_text=disclaimer_text,
+        )
 
         publication = _get_or_create_publication(
             session,
@@ -426,6 +466,9 @@ def record_publication_failure_in_new_session(
             description, (script.source_manifest if script is not None else None) or {}
         )
         description = _with_bgm_credit(description, new_session, video_project_id)
+        description = _with_disclaimer(
+            description, _project_disclaimer_text(new_session, project)
+        )
         tags = list(body.get("tags") or [])
         privacy_status = get_settings().YOUTUBE_DEFAULT_PRIVACY_STATUS
 

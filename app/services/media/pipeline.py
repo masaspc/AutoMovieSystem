@@ -474,7 +474,8 @@ def _fetch_section_backgrounds(
 # v5: 教材背景のピクセル幅フィットとコード抽出。
 # v6: 決定論的Ken Burns・場面転換・見出し・アクセント配色バリエーション。
 # v7: Ken Burnsを背景レイヤーだけに限定し、固定前景と見出し登場を分離。
-RENDER_SPEC_VERSION = 7
+# v8: チャンネル編集方針の免責文をエンディングCTA下部へ表示。
+RENDER_SPEC_VERSION = 8
 
 
 def _compute_render_input_checksum(
@@ -488,6 +489,7 @@ def _compute_render_input_checksum(
     character_fingerprint: str,
     subtitle_burn_in: bool,
     audio_fingerprint: str = "audio-mix-disabled",
+    disclaimer_text: str = "",
 ) -> str:
     """script本文+各Assetのchecksum+レンダリング設定からレンダリング入力のハッシュを計算する。"""
     hasher = hashlib.sha256()
@@ -498,6 +500,7 @@ def _compute_render_input_checksum(
         hasher.update(background_asset.checksum.encode("utf-8"))
     hasher.update(character_fingerprint.encode("utf-8"))
     hasher.update(audio_fingerprint.encode("utf-8"))
+    hasher.update(disclaimer_text.encode("utf-8"))
     hasher.update(
         f"|spec={RENDER_SPEC_VERSION}|aspect_ratio={aspect_ratio}|endcard={endcard_enabled}|"
         f"endcard_duration={endcard_duration_seconds}|subtitle_burn_in={subtitle_burn_in}".encode()
@@ -519,6 +522,19 @@ def _resolve_channel_name(session: Session, project: VideoProject) -> str:
         return ""
     channel = session.get(Channel, topic.channel_id)
     return channel.name if channel is not None else ""
+
+
+def _resolve_disclaimer_text(session: Session, project: VideoProject) -> str:
+    """Topic経由でチャンネル免責文を解決する。未設定・不正値は空文字。"""
+    from app.models.channel import Channel
+    from app.models.topic import Topic
+    from app.services.channels.policy import get_editorial_policy
+
+    topic = session.get(Topic, project.topic_id)
+    if topic is None:
+        return ""
+    channel = session.get(Channel, topic.channel_id)
+    return get_editorial_policy(channel).disclaimer_text
 
 
 def build_chapter_lines(
@@ -566,6 +582,7 @@ def render_video(
     script = _get_script(session, project)
     if channel_name is None:
         channel_name = _resolve_channel_name(session, project)
+    disclaimer_text = _resolve_disclaimer_text(session, project)
 
     settings = get_settings()
     dialogue_enabled = dialogue.dialogue_script_enabled(settings)
@@ -634,6 +651,7 @@ def render_video(
         character_fingerprint=character_fingerprint,
         subtitle_burn_in=settings.SUBTITLE_BURN_IN_ENABLED,
         audio_fingerprint=audio_fingerprint,
+        disclaimer_text=disclaimer_text,
     )
     idempotency_key = build_render_idempotency_key(video_project_id, input_checksum)
 
@@ -713,6 +731,7 @@ def render_video(
             scene_frames=scene_frames,
             audio_mix=audio_mix,
             visual_variety_plan=visual_plan,
+            disclaimer_text=disclaimer_text,
         )
 
         try:
