@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict
 
 from sqlalchemy import func
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.models.channel import Channel
 from app.models.evidence import Evidence
 from app.models.job_run import JobRun
 from app.models.publication import Publication
@@ -17,8 +19,14 @@ from app.models.topic import Topic
 from app.models.video_metric_daily import VideoMetricDaily
 from app.models.video_project import VideoProject
 from app.providers.llm.base import LLMProvider
+from app.schemas.editorial_policy import ChannelEditorialPolicy
 from app.schemas.production_settings import ProductionSettings
 from app.schemas.script_content import ScriptContent
+from app.services.channels.policy import (
+    editorial_policy_checksum,
+    editorial_policy_prompt_block,
+    get_editorial_policy,
+)
 from app.services.feedback.self_review import collect_recent_lessons
 from app.services.jobs import JobInProgressError, run_idempotent_async
 from app.services.llm_gateway import call_llm
@@ -29,7 +37,7 @@ from app.services.series.context import build_series_script_context
 
 logger = get_logger(__name__)
 
-PROMPT_VERSION = "script_v8_variety"
+PROMPT_VERSION = "script_v9_channel_policy"
 OPERATION = "generate_script"
 REPAIR_PROMPT_VERSION = "script_repair_v2"
 REPAIR_OPERATION = "repair_script_duration"
@@ -160,6 +168,7 @@ def _build_prompts(
     evidence_list: list[Evidence],
     production_settings: ProductionSettings | None = None,
     variety_plan: VarietyPlan | None = None,
+    editorial_policy: ChannelEditorialPolicy | None = None,
 ) -> tuple[str, str]:
     settings = get_settings()
     production_settings = production_settings or ProductionSettings()
@@ -220,6 +229,8 @@ def _build_prompts(
         "切り替えてください。視聴者がコメントで答えられる具体的な問いかけを、台本内に"
         "必ず1箇所以上入れてください。"
     )
+    if editorial_policy is not None:
+        system_prompt += editorial_policy_prompt_block(editorial_policy)
     if variety_plan is not None:
         system_prompt += variety_prompt_block(variety_plan)
     evidence_lines = "\n".join(
@@ -378,14 +389,24 @@ async def generate_script(
         raise TopicNotFoundError(f"Topic not found: {topic_id}")
 
     production_settings = production_settings or ProductionSettings()
-    settings_checksum = production_settings.checksum()
+    channel = session.get(Channel, topic.channel_id)
+    editorial_policy = get_editorial_policy(channel)
+    production_settings_checksum = production_settings.checksum()
+    policy_checksum = editorial_policy_checksum(editorial_policy)
+    settings_checksum = hashlib.sha256(
+        f"{production_settings_checksum}:{policy_checksum}".encode()
+    ).hexdigest()
     variety_plan = pick_variety_plan(
         topic_id, template=production_settings.script_template
     )
 
     evidence_list = session.query(Evidence).filter(Evidence.topic_id == topic_id).all()
     system_prompt, user_prompt = _build_prompts(
-        topic, evidence_list, production_settings, variety_plan
+        topic,
+        evidence_list,
+        production_settings,
+        variety_plan,
+        editorial_policy,
     )
     system_prompt += build_series_script_context(session, topic_id)
     system_prompt += _build_recent_performance_context(
@@ -488,8 +509,11 @@ async def generate_script(
         source_manifest = {
             "evidence_ids": [e.id for e in evidence_list],
             "estimated_duration_seconds": estimated_seconds,
-            "production_settings_checksum": settings_checksum,
+            "production_settings_checksum": production_settings_checksum,
             "production_settings": production_settings.model_dump(),
+            "editorial_policy_checksum": policy_checksum,
+            "generation_settings_checksum": settings_checksum,
+            "editorial_policy": editorial_policy.model_dump(mode="json"),
             "variety_plan": asdict(variety_plan),
         }
 
@@ -543,8 +567,8 @@ async def generate_script(
             (
                 candidate
                 for candidate in candidates
-                if (candidate.source_manifest or {}).get("production_settings_checksum")
-                == settings_checksum
+                    if (candidate.source_manifest or {}).get("generation_settings_checksum")
+                    == settings_checksum
             ),
             None,
         )

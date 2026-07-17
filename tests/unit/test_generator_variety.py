@@ -63,4 +63,4 @@ def test_generate_script_records_variety_plan_in_source_manifest(db_session: Ses
         "tsukkomi_density": expected.tsukkomi_density,
         "bridge_style": expected.bridge_style,
     }
-    assert script.prompt_version == PROMPT_VERSION == "script_v8_variety"
+    assert script.prompt_version == PROMPT_VERSION == "script_v9_channel_policy"
