@@ -41,3 +41,7 @@ Thumbs.db
 *.sqlite3
 *.db
 client_secret*.json
+
+# スキル共有のリンク(link-skills スクリプトが張るjunction/symlink。実体は .agents/skills/)
+/.claude/skills/
+/.codex/skills/
